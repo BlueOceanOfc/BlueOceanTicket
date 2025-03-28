@@ -1,0 +1,9 @@
+# Ignorar o arquivo .env para proteger as credenciais
+.env
+
+# Ignorar a pasta node_modules (pacotes instalados)
+node_modules
+
+# Ignorar logs gerados
+logs
+*.log
