@@ -3,7 +3,245 @@ const logger = require('./logger'); // Sistema de logs
 const {
   removerTagsHTML,
   extrairOrderIdDaMensagem,
+  buscarStatusPedido,
+  responderTicket,
 } = require('./services/apiService'); // Funções de utilidades para limpeza de texto e extração do Order ID
+
+// Adicione essa função no início ou final do arquivo iaSolicitacao.js
+
+// Função para extrair múltiplos Order IDs
+
+function extrairTodosOrderIds(mensagem) {
+  if (!mensagem) return [];
+
+  // Extração dos Order IDs usando regex mais flexível
+  const regexOrderId = /<div><b>Order ID<\/b>: (\d{4,})<\/div>/g;
+  let orderIds = [];
+  let match;
+
+  // Usar o regex para capturar os Order IDs dentro das tags <div><b>Order ID</b>:
+  while ((match = regexOrderId.exec(mensagem)) !== null) {
+    orderIds.push(match[1]); // Adiciona os IDs encontrados
+  }
+
+  // Se não encontrar IDs diretamente, tentamos capturar qualquer sequência numérica de 4+ dígitos
+  if (orderIds.length === 0) {
+    const regexForaDeTags = /\d{4,}/g;
+    orderIds = [...new Set(mensagem.match(regexForaDeTags) || [])]; // Adiciona IDs encontrados fora das tags
+  }
+
+  // Caso haja IDs concatenados, separe-os (como no caso de 550039550039)
+  const orderIdsSeparados = [];
+  for (const orderId of orderIds) {
+    if (orderId.length >= 8) {
+      // Se o ID for maior que 8 dígitos, dividimos em dois IDs de 4 dígitos cada
+      const partes = orderId.match(/(\d{4})(\d{4})/);
+      if (partes) {
+        orderIdsSeparados.push(partes[1], partes[2]);
+      } else {
+        orderIdsSeparados.push(orderId); // Se não puder ser dividido, adiciona como está
+      }
+    } else {
+      orderIdsSeparados.push(orderId); // Adiciona IDs válidos de 4 ou mais dígitos
+    }
+  }
+
+  // Remover IDs duplicados
+  const orderIdsUnicos = [...new Set(orderIdsSeparados)];
+
+  console.log('-----------extrairTodosOrdersID');
+  console.log('✅ Order IDs extraídos:', orderIdsUnicos);
+  return orderIdsUnicos;
+}
+
+const mensagemTeste =
+  '<div><b>Orders - Refill</b></div><div><b>Order ID</b>: 550039</div><hr>550039----- speedUp';
+const orderIds = extrairTodosOrderIds(mensagemTeste);
+console.log('Order IDs extraídos:', orderIds);
+
+async function processarOrderIds(
+  ticketId,
+  tipoSolicitacao,
+  mensagem,
+  idiomaDetectado,
+) {
+  const orderIds = extrairTodosOrderIds(mensagem); // Extrai todos os Order IDs da mensagem
+  console.log(
+    `📦 [processarOrderIds] Order IDs extraídos: ${orderIds.join(', ')}`,
+  );
+
+  if (orderIds.length === 0) {
+    console.log(`❌ Nenhum Order ID encontrado no ticket ${ticketId}`);
+    return `No Order IDs were found in the message.`;
+  }
+
+  let pedidosAptos = [];
+  let pedidosNaoAptos = [];
+  let mensagemRespostas = '';
+  const orderIdsProcessados = new Set(); // Conjunto para verificar se o Order ID já foi processado
+
+  // Processa cada Order ID
+  for (const orderId of orderIds) {
+    // Verifica se o Order ID já foi processado
+    if (orderIdsProcessados.has(orderId)) {
+      console.log(`🚫 Order ID ${orderId} já foi processado, ignorando.`);
+      continue; // Ignora se já foi processado
+    }
+
+    // Marca o Order ID como processado
+    orderIdsProcessados.add(orderId);
+
+    // Buscar o status de cada pedido
+    let orderData = await buscarStatusPedido(orderId);
+    if (!orderData) {
+      pedidosNaoAptos.push({ orderId, motivo: 'Não encontrado' });
+      continue;
+    }
+
+    if (orderData.status === 'canceled') {
+      pedidosNaoAptos.push({ orderId, motivo: 'Pedido já cancelado' });
+    } else if (orderData.status === 'completed') {
+      pedidosNaoAptos.push({ orderId, motivo: 'Pedido já completo' });
+    } else {
+      // Se o pedido estiver apto para a ação solicitada
+      pedidosAptos.push(orderId);
+    }
+  }
+
+  // Gerando a resposta para o cliente
+  if (pedidosAptos.length > 0) {
+    mensagemRespostas += `The following Order IDs have been sent for speed-up: ${pedidosAptos.join(
+      ', ',
+    )}.\n\n`;
+  }
+
+  if (pedidosNaoAptos.length > 0) {
+    mensagemRespostas += `The following Order IDs were not processed:\n`;
+    pedidosNaoAptos.forEach((pedido) => {
+      mensagemRespostas += `Order ID ${pedido.orderId} - Reason: ${pedido.motivo}\n`;
+    });
+  }
+
+  // Enviar a resposta final ao cliente
+  console.log(`-----------ProcessarOdersID-----------`);
+  console.log(
+    `Resposta enviada para o ticket ${ticketId}: ${mensagemRespostas}`,
+  );
+  await responderTicket(ticketId, mensagemRespostas);
+  return mensagemRespostas;
+}
+
+function cortarMensagemUtil(mensagemOriginal) {
+  console.log(`-------------CORTAR MENSAGEM -------------------`);
+  console.log(`📜 Mensagem original: "${mensagemOriginal}"`);
+
+  // Encontrar a posição da primeira tag </b>
+  const primeiraTagFechamento = mensagemOriginal.indexOf('</b>'); // Encontra a primeira tag </b>
+
+  if (primeiraTagFechamento === -1) {
+    // Se não encontrar a tag </b>, retorna a mensagem original
+    console.log(
+      `⚡ Não foi possível localizar a tag </b>, retornando a mensagem original.`,
+    );
+    return mensagemOriginal;
+  }
+
+  // Encontrar a posição da segunda tag </b>
+  let segundaTagFechamento = mensagemOriginal.indexOf(
+    '</b>',
+    primeiraTagFechamento + 1,
+  );
+
+  // Caso a segunda tag </b> não exista, tentamos retornar a partir da primeira
+  if (segundaTagFechamento === -1) {
+    console.log(
+      `⚡ Segunda tag </b> não encontrada, utilizando a primeira tag </b> para cortar a mensagem.`,
+    );
+    // Caso não tenha a segunda tag </b>, retornamos o restante da mensagem a partir da primeira
+    return mensagemOriginal.slice(primeiraTagFechamento + 4).trim();
+  }
+
+  // Caso encontre a segunda tag </b>, cortamos a partir dela
+  let cortadaComTags = mensagemOriginal.slice(segundaTagFechamento + 4).trim(); // Pula a segunda tag </b> e mantém o resto
+
+  // Remover as tags HTML da mensagem cortada
+  //const cortadaSemTags = cortadaComTags.replace(/<\/?[^>]+(>|$)/g, '').trim();
+
+  console.log(`🔧 Mensagem cortada: "${cortadaComTags}"`);
+  return cortadaComTags;
+}
+
+async function classificarCategoriaGeral(mensagemOriginal) {
+  // Chama a função cortarMensagemUtil diretamente para obter a mensagem cortada corretamente
+  const mensagemCortada = cortarMensagemUtil(mensagemOriginal); // A mensagem cortada já está aqui
+
+  // Verifica se `mensagemCortada` está em um formato esperado
+  console.log(`------- CLASSIFICAR CATEGORIA ------------`);
+  console.log(`✂️ classificar:  Mensagem cortada (útil): "${mensagemCortada}"`);
+
+  // Refinando o prompt para a IA, deixando claro que a palavra "cancelar" se refere a um pedido
+  const prompt = `
+    Você é um assistente de suporte multilíngue. Sua tarefa é classificar a mensagem do cliente como "Pedido", "Pagamento" ou "Outro", com base no conteúdo da mensagem.
+
+    
+    1. **"Pedido"** – Se a mensagem for sobre qualquer aspecto de um pedido, como cancelamento, aceleração, status, garantia, refil, ou entrega.
+       - A IA deve identificar que, mesmo sem o **Order ID**, a mensagem é sobre um pedido. 
+       - **Se a mensagem contiver "Speed" ou "SpeedUp"**, isso deve ser automaticamente classificado como "Pedido", **mesmo sem o número do pedido presente**. Exemplo: "Speed", "SpeedUp", "Please speed up my order", "I need to speed my request", "18575speed", entre outros.
+
+    2. "Pagamento" – se a mensagem for sobre questões financeiras, como valor, fatura, cobrança, saldo, cartão, comprovante de pagamento, falha no pagamento, etc.
+    3. "Outro" – se não for relacionado a pedidos ou pagamentos. Exemplos: perda de senha, suporte técnico, dúvidas gerais, reclamações, acesso à conta, etc.
+
+    ⚠️ IMPORTANTE:
+    - A mensagem pode ser em qualquer idioma — a IA deve ser capaz de entender isso.
+    - Se a mensagem estiver relacionada a um **pedido**, mesmo sem o **Order ID**, classifique como "Pedido" e solicite ao cliente o **Order ID**.
+    - Se a mensagem for sobre pagamento ou questões financeiras, classifique como "Pagamento".
+    - Caso contrário, classifique como "Outro".
+
+    Mensagem do cliente:
+    """${mensagemCortada}"""
+  `;
+
+  try {
+    const response = await axios.post(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model: 'gpt-4o-mini-2024-07-18',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Você é um assistente de suporte. Classifique a mensagem como "Pedido", "Pagamento" ou "Outro".',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        max_tokens: 10,
+        temperature: 0.1,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+
+    const resultado = response.data.choices[0].message.content.trim();
+
+    // Verificar se o resultado está dentro das categorias esperadas
+    if (!['Pedido', 'Pagamento', 'Outro'].includes(resultado)) {
+      console.log(`⚠️ Resposta inesperada da IA: ${resultado}`);
+      return 'Outro'; // fallback seguro para retornar "Outro" caso não identifique uma categoria válida
+    }
+    console.log(`🎯 Categoria classificada pela IA: ${resultado}`);
+    return resultado; // Retorna a categoria classificada
+  } catch (error) {
+    logger.error('Erro ao classificar categoria geral:', error.message);
+    return 'Outro'; // Retorna "Outro" como fallback seguro se houver erro durante a classificação
+  }
+}
 
 // Função para detectar o idioma usando a OpenAI
 // Função para detectar o idioma usando a OpenAI
@@ -12,10 +250,9 @@ async function detectLanguage(messages) {
     logger.error(
       'O parâmetro messages não é um array. Convertendo para array.',
     );
-    messages = Array.isArray(messages) ? messages : [messages];
+    messages = [messages];
   }
 
-  // Pega a última mensagem útil com mais de 5 caracteres
   const ultimaMensagemUtil = messages
     .slice()
     .reverse()
@@ -28,22 +265,25 @@ async function detectLanguage(messages) {
 
   if (!ultimaMensagemUtil) {
     logger.error('Nenhuma mensagem útil encontrada para análise.');
-    return 'en'; // Fallback para inglês, caso não consiga detectar o idioma
+    return 'en';
   }
 
-  const texto = removerTagsHTML(ultimaMensagemUtil.message).toLowerCase();
-  console.log(`🧠 Texto extraído para detecção de idioma: "${texto}"`);
+  // 🔍 Aplica o corte inteligente da mensagem apenas uma vez
+  const mensagemCortada = cortarMensagemUtil(ultimaMensagemUtil.message); // A versão cortada da mensagem já é gerada aqui
+
+  // Mostra no log a diferença
+  console.log(`---------- DetectLanguage------------`);
+  console.log(`✂️ Mensagem cortada (útil): "${mensagemCortada}"`);
 
   try {
-    // Usando o modelo para detectar o idioma
     const response = await axios.post(
-      'https://api.openai.com/v1/chat/completions', // Endpoint da OpenAI
+      'https://api.openai.com/v1/chat/completions',
       {
-        model: 'gpt-4o-mini-2024-07-18', // O modelo da OpenAI
+        model: 'gpt-4o-mini-2024-07-18',
         messages: [
           {
             role: 'system',
-            content: `Identifique o idioma do seguinte texto e retorne apenas o código do idioma (por exemplo, 'en' para inglês, 'pt' para português): "${texto}"`,
+            content: `Você é um assistente que deve identificar o idioma principal do texto a seguir. Retorne apenas o código do idioma (ex: 'pt', 'en', 'de'). Texto: "${mensagemCortada}"`,
           },
         ],
         max_tokens: 60,
@@ -58,23 +298,19 @@ async function detectLanguage(messages) {
     );
 
     const idiomaDetectado = response.data.choices[0].message.content.trim();
-
-    // Se a OpenAI não conseguir identificar corretamente o idioma, retorna 'pt' como fallback
     if (!idiomaDetectado || idiomaDetectado === 'und') {
-      console.log('❌ Não foi possível identificar o idioma com a OpenAI.');
-      return 'pt'; // Fallback para português
+      console.log('❌ Idioma não identificado, usando fallback pt');
+      return 'en';
     }
 
     console.log(`🌐 Idioma detectado: ${idiomaDetectado}`);
-
-    return idiomaDetectado; // Retorna o código do idioma detectado
+    return idiomaDetectado;
   } catch (error) {
-    console.log('❌ Erro ao interagir com a OpenAI:', error.message);
-    return 'pt'; // Em caso de erro, retorna 'pt' como fallback
+    console.log('❌ Erro na detecção de idioma:', error.message);
+    return 'en';
   }
 }
 
-// Função para traduzir o texto usando a OpenAI
 async function traduzirTexto(texto, idiomaDestino) {
   if (!idiomaDestino) {
     logger.error('Idioma de destino não especificado para tradução.');
@@ -89,7 +325,7 @@ async function traduzirTexto(texto, idiomaDestino) {
         messages: [
           {
             role: 'system',
-            content: `Você é um tradutor. Sua tarefa é traduzir o texto solicitado para o idioma ${idiomaDestino}.`,
+            content: `Você é um tradutor. Sua tarefa é traduzir o texto solicitado para o idioma ${idiomaDestino}, preservando o significado e contexto, e considerando que pode haver mistura de línguas no texto. Traduza com precisão para o idioma ${idiomaDestino}.`,
           },
           {
             role: 'user',
@@ -118,156 +354,240 @@ async function traduzirTexto(texto, idiomaDestino) {
   }
 }
 
+async function gerarMensagemSolicitandoOrderId(idiomaDestino = 'en') {
+  const textoBase = `Hello, we require the *Order ID* in order to continue with your request. Please provide the *Order ID* so we can assist you further.
+
+Best regards,
+
+David
+
+➕ Join us as a reseller for just $25 - [Reseller Link](https://smmexcellent.com/child-panel)
+➕ Invite friends, share your link, and earn! - [Affiliate Link](https://smmexcellent.com/affiliates)`;
+
+  if (idiomaDestino === 'en') {
+    return textoBase;
+  }
+
+  try {
+    const traduzido = await traduzirTexto(textoBase, idiomaDestino);
+    return traduzido;
+  } catch (error) {
+    logger.error(
+      'Erro ao gerar mensagem de solicitação de Order ID:',
+      error.message,
+    );
+    return textoBase;
+  }
+}
+
 // Função para gerar a solicitação à IA
 async function verificarTipoDeSolicitacao(messages) {
-  // Filtra as mensagens e as concatena em um único texto
-
-  // Pega apenas as últimas 3 mensagens do cliente (não staff)
+  // Filtra as últimas 3 mensagens do cliente
   const mensagensCliente = messages
     .filter((msg) => msg.message && !msg.is_staff)
-    .slice(-3); // Últimas 3
+    .slice(-3); // Últimas 3 mensagens
 
+  // Junta as mensagens para uma única string
   const messageText = mensagensCliente
-    .map((msg) => removerTagsHTML(msg.message).toLowerCase())
+    .map((msg) => msg.message.trim()) // Não remove tags HTML antes
     .join(' ');
 
-  // Verifica se o texto das mensagens é válido
-  if (!messageText || messageText.trim() === '') {
-    logger.error('Erro: O texto das mensagens está vazio ou inválido.');
-    throw new Error('Texto das mensagens vazio ou inválido.');
+  // Aplica o corte na mensagem, mantendo as tags intactas
+  const mensagemCortada = cortarMensagemUtil(messageText); // Chama a função de corte uma vez
+
+  // **Log para ver a mensagem cortada antes da classificação**
+  console.log(`------ VERIFICAR TIPO DE SOLICITACAO ----------`);
+  console.log(
+    `📜 [verificarTipoDeSolicitacao] Analisando a mensagem do cliente: "${mensagemCortada}"`,
+  );
+
+  // Detectar idioma (continua sendo útil para tradução futura)
+  const idiomaDetectado = await detectLanguage(messages); // Usa a mensagem cortada para detectar o idioma
+
+  // ✅ Classifica a categoria geral do ticket usando a mensagem cortada
+  const categoria = await classificarCategoriaGeral(mensagemCortada); // Passa a mensagem cortada para a classificação
+  console.log(
+    `🎯 [verificarTipoDeSolicitacao] Categoria geral detectada: ${categoria}`,
+  );
+
+  if (categoria === 'Pagamento' || categoria === 'Outro') {
+    // Ignorar processamento se for relacionado a "Pagamento" ou "Outro"
+    console.log(
+      `🚫 [verificarTipoDeSolicitacao] Ticket relacionado a "Pagamento" ou "Outro". Ignorando.`,
+    );
+    return { tipoSolicitacao: categoria, orderIds: [] }; // Retorna um array vazio de orderIds
   }
 
-  const ultimaMensagem = messages
-    .slice()
-    .reverse()
-    .find(
-      (msg) => msg.message && !msg.is_staff && msg.message.trim().length > 0,
+  // ✅ Continua apenas se for relacionado a Pedido
+  const orderIds = extrairTodosOrderIds(mensagemCortada); // Passa a versão cortada da mensagem
+
+  // **Log para ver o que aconteceu com os Order IDs extraídos**
+  if (orderIds.length === 0) {
+    console.log(
+      `❗ [verificarTipoDeSolicitacao] Pedido identificado, mas sem Order ID. Solicitando o Order ID ao cliente.`,
+    );
+  } else {
+    console.log(
+      `✅ [verificarTipoDeSolicitacao] Order ID(s) extraído(s): ${orderIds.join(
+        ', ',
+      )}`,
+    );
+  }
+
+  if (orderIds.length === 0) {
+    // Se não houver Order ID, solicita o Order ID
+    const mensagemSolicitacao = await gerarMensagemSolicitandoOrderId(
+      idiomaDetectado,
+    );
+    console.log(
+      `❓ [verificarTipoDeSolicitacao] Solicitando Order ID ao cliente. Enviar a mensagem para o cliente.`,
     );
 
-  if (ultimaMensagem) {
+    return { tipoSolicitacao: 'Pedido', orderIds: [] }; // Retorna vazio, pois o cliente precisa fornecer o Order ID
   }
 
-  // Antes de enviar o texto para IA, vamos garantir que extraímos o Order ID
-  const orderId = extrairOrderIdDaMensagem(messages);
-  console.log(`🆔 Order ID extraído: ${orderId}`);
-
-  // Caso o Order ID não seja encontrado, retornamos erro ou solicitamos ao cliente
-  if (!orderId) {
-    console.timeLog(
-      '❌ Erro: Não foi possível extrair o Order ID das mensagens.',
-    );
-    return { tipoSolicitacao: 'Outro', orderId: null }; // Retorna null para indicar que o Order ID não foi encontrado
-  }
-
-  // O prompt que será enviado à IA
+  // 🔄 Identificar a intenção dentro do contexto do pedido usando a mensagem cortada
   const prompt = `
-    O cliente interagiu com o suporte. A solicitação pode ser sobre:
-    - Cancelamento de pedido
-    - Aceleração (Speedup) de pedido
-    - Refil ou Garantia
-    - Outros assuntos gerais relacionados ao pedido.
+    O cliente está solicitando suporte relacionado a um pedido. A solicitação pode ser:
 
-    Com base nas mensagens a seguir, determine a intenção do cliente.
-    
-    Mensagens do cliente:
-    ${messageText}
+    - Cancelamento
+    - Aceleração
+    - Refil/Garantia
+    - Diversos (mas ainda dentro de "pedido")
 
-    Identifique o tipo de solicitação (Aceleração, Cancelamento, Refil/Garantia, Outro).
-    Responda apenas com o tipo de solicitação: Aceleração, Cancelamento, Refil/Garantia ou Outro.
-    `;
+    Com base nas mensagens abaixo, classifique a intenção do cliente:
+    ${mensagemCortada}
 
-  // Faz a requisição para a IA com o prompt
+    Responda com: Cancelamento, Aceleração, Refil/Garantia ou Diversos.
+  `;
+
   try {
     const response = await axios.post(
-      'https://api.openai.com/v1/chat/completions', // Endpoint da OpenAI
+      'https://api.openai.com/v1/chat/completions',
       {
-        model: 'gpt-4o-mini-2024-07-18', // O modelo da IA que será utilizado
+        model: 'gpt-4o-mini-2024-07-18',
         messages: [
           {
             role: 'system',
-            content: `Você é um assistente de suporte. Seu objetivo é identificar a solicitação do cliente com base nas mensagens e categorizar como: Aceleração, Cancelamento, Refil/Garantia ou Outro.`,
+            content: `Você é um assistente de suporte. Classifique a solicitação como: Cancelamento, Aceleração, Refil/Garantia ou Diversos.`,
           },
           {
             role: 'user',
-            content: prompt, // O prompt estruturado com base nas mensagens
+            content: prompt,
           },
         ],
-        max_tokens: 280,
-        temperature: 0.7,
+        max_tokens: 100,
+        temperature: 0.5,
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, // Sua chave da OpenAI
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           'Content-Type': 'application/json',
         },
       },
     );
 
-    // Retorna o tipo de solicitação (Aceleração, Cancelamento, Refil/Garantia ou Outro)
-    const tipoSolicitacao = response.data.choices[0].message.content.trim();
-    return { tipoSolicitacao, orderId };
-  } catch (error) {
-    if (error.response && error.response.status === 429) {
-      const retryAfter = error.response.headers['retry-after'];
+    const tipo = response.data.choices[0].message.content.trim();
 
-      const tempoEspera =
-        retryAfter && !isNaN(retryAfter) ? parseInt(retryAfter) : 10; // Padrão: espera 10 segundos
-
-      console.log(
-        `⚠️ Limite de requisições da OpenAI atingido (Erro 429). Aguarde ${tempoEspera} segundos para tentar novamente.`,
-      );
-
-      // Aguarda o tempo necessário e tenta de novo
-      await new Promise((resolve) => setTimeout(resolve, tempoEspera * 1000));
-
-      // Tenta novamente recursivamente (1 vez)
-      return await verificarTipoDeSolicitacao(messages);
+    // Verificar a resposta para garantir que "Aceleração" é reconhecida corretamente
+    if (tipo === 'speedup') {
+      return { tipoSolicitacao: 'Aceleração', orderIds };
     }
 
+    return { tipoSolicitacao: tipo, orderIds };
+  } catch (error) {
     console.log(
-      `❌ Ocorreu um erro ao tentar identificar o tipo de solicitação: ${error.message}`,
+      `❌ Erro ao identificar tipo dentro de "Pedido": ${error.message}`,
     );
-    throw new Error('Erro ao verificar o tipo de solicitação com a IA.');
+    return { tipoSolicitacao: 'Outro', orderIds }; // Retorna "Outro" caso falhe na classificação
   }
+  // Log final para identificar o tipo de solicitação
+  console.log(
+    `🔍 [verificarTipoDeSolicitacao] Tipo de solicitação final: ${categoria}`,
+  );
 }
 
-// Função para gerar a resposta final com base no tipo de solicitação
 async function gerarRespostaFinal(
   ticketId,
   tipoSolicitacao,
-  orderId,
-  orderData,
+  orderIds, // Agora, a variável orderIds será sempre um array
+  orderDataList, // Agora, isso será uma lista de objetos contendo os dados de cada pedido
   idiomaDetectado,
+  nomeAtendente = 'David', // Nome do atendente
+  linkRevendedor = 'https://smmexcellent.com/child-panel',
+  linkAfiliado = 'https://smmexcellent.com/affiliates',
 ) {
+  console.log('---------- GERAR RESPOSTA FINAL ------------');
+
   let respostaIA = '';
+  let pedidosAptos = [];
+  let pedidosNaoAptos = [];
 
-  // Verifica o tipo de solicitação
+  // Remover Order IDs duplicados
+  const orderIdsUnicos = [...new Set(orderIds)]; // Agora a variável `orderIdsUnicos` é usada aqui
 
-  if (tipoSolicitacao === 'Cancelamento') {
-    if (orderData.status === 'canceled') {
-      respostaIA = `Olá ${orderData.user},\n\nSeu pedido *ID ${orderId}* já foi *cancelado*, conforme solicitado. Você pode fazer um novo pedido a qualquer momento.\n\nAtenciosamente,\n\nDavid\n\n➕ Junte-se a nós como revendedor por apenas $25 - [Link de Revenda](https://smmexcellent.com/child-panel)\n➕ Convide amigos, compartilhe seu link e ganhe! - [Link de Afiliados](https://smmexcellent.com/affiliates)`;
-    } else if (orderData.status === 'completed') {
-      respostaIA = `Olá ${orderData.user},\n\nO seu pedido *ID ${orderId}* já está *completo*. Não podemos cancelar um pedido que já foi finalizado.\n\nAtenciosamente,\n\nDavid\n\n➕ Junte-se a nós como revendedor por apenas $25 - [Link de Revenda](https://smmexcellent.com/child-panel)\n➕ Convide amigos, compartilhe seu link e ganhe! - [Link de Afiliados](https://smmexcellent.com/affiliates)`;
-    } else {
-      respostaIA = `Olá ${orderData.user},\n\nA solicitação de *cancelamento* do seu pedido *ID ${orderId}* foi encaminhada à equipe responsável. Seu pedido será cancelado em breve.\n\nAtenciosamente,\n\nDavid\n\n➕ Junte-se a nós como revendedor por apenas $25 - [Link de Revenda](https://smmexcellent.com/child-panel)\n➕ Convide amigos, compartilhe seu link e ganhe! - [Link de Afiliados](https://smmexcellent.com/affiliates)`;
-    }
-  } else if (tipoSolicitacao === 'Aceleração') {
-    if (orderData.status === 'completed') {
-      respostaIA = `Olá ${orderData.user},\n\nSeu pedido *ID ${orderId}* já está *completo*. Não é possível acelerar um pedido que já foi concluído.\n\nAtenciosamente,\n\nDavid\n\n➕ Junte-se a nós como revendedor por apenas $25 - [Link de Revenda](https://smmexcellent.com/child-panel)\n➕ Convide amigos, compartilhe seu link e ganhe! - [Link de Afiliados](https://smmexcellent.com/affiliates)`;
-    } else if (orderData.status === 'canceled') {
-      respostaIA = `Olá ${orderData.user},\n\nO seu pedido *ID ${orderId}* foi *cancelado*. Não podemos acelerar um pedido que foi cancelado.\n\nAtenciosamente,\n\nDavid\n\n➕ Junte-se a nós como revendedor por apenas $25 - [Link de Revenda](https://smmexcellent.com/child-panel)\n➕ Convide amigos, compartilhe seu link e ganhe! - [Link de Afiliados](https://smmexcellent.com/affiliates)`;
-    } else {
-      respostaIA = `Olá ${orderData.user},\n\nA sua solicitação de aceleração foi encaminhada para a nossa equipe responsável. Vamos tentar acelerar o seu pedido **ID ${orderId}**.\n\nAtenciosamente,\n\nDavid\n\n➕ Junte-se a nós como revendedor por apenas $25 - [Link de Revenda](https://smmexcellent.com/child-panel)\n➕ Convide amigos, compartilhe seu link e ganhe! - [Link de Afiliados](https://smmexcellent.com/affiliates)`;
-    }
-  } else if (tipoSolicitacao === 'Refil/Garantia') {
-    respostaIA = `Olá ${orderData.user},\n\nA sua solicitação de *refil* ou *garantia* será encaminhada para a nossa equipe técnica especializada para análise.\n\nAtenciosamente,\n\nDavid\n\n➕ Junte-se a nós como revendedor por apenas $25 - [Link de Revenda](https://smmexcellent.com/child-panel)\n➕ Convide amigos, compartilhe seu link e ganhe! - [Link de Afiliados](https://smmexcellent.com/affiliates)`;
-  } else {
-    respostaIA = `Olá ${orderData.user},\n\nSua solicitação não está diretamente relacionada ao pedido. Encaminharemos para a nossa equipe técnica especializada para análise.\n\nAtenciosamente,\n\nDavid\n\n➕ Junte-se a nós como revendedor por apenas $25 - [Link de Revenda](https://smmexcellent.com/child-panel)\n➕ Convide amigos, compartilhe seu link e ganhe! - [Link de Afiliados](https://smmexcellent.com/affiliates)`;
+  if (!Array.isArray(orderDataList)) {
+    orderDataList = [orderDataList]; // Caso apenas um pedido tenha sido passado
   }
 
-  // Traduzir a resposta para o idioma do cliente
-  const respostaTraduzida = await traduzirTexto(respostaIA, idiomaDetectado);
+  // Iniciando a resposta com uma saudação
+  const nomeUsuario = orderDataList[0]?.user; // Atribuindo o nome do usuário de `orderDataList`
 
+  if (!nomeUsuario) {
+    console.log('❌ Nome do usuário não encontrado.');
+    return 'Erro: Nome do usuário não encontrado.';
+  }
+
+  respostaIA += `Hello ${nomeUsuario},\n\n`; // Saudação personalizada com nome do usuário
+
+  // Processando todos os pedidos
+  for (const orderData of orderDataList) {
+    if (!orderData || !orderData.status) {
+      console.log(`❌ Dados inválidos para o pedido ${orderData.orderId}.`);
+      pedidosNaoAptos.push({
+        orderId: orderData.orderId,
+        motivo: 'Dados incompletos',
+      });
+      continue;
+    }
+
+    // Gerar a resposta para cada pedido com mais detalhes
+    if (tipoSolicitacao === 'Cancelamento') {
+      if (orderData.status === 'canceled') {
+        respostaIA += `Your order *ID ${orderData.orderId}* has already been *canceled*, as requested. You can place a new order at any time.\n\n`;
+      } else if (orderData.status === 'completed') {
+        respostaIA += `Your order *ID ${orderData.orderId}* is already *complete*. We cannot cancel an order that has already been completed.\n\n`;
+      } else {
+        respostaIA += `The *cancellation* request for your order *ID ${orderData.orderId}* has been forwarded to the responsible team. Your order will be canceled soon.\n\n`;
+      }
+    } else if (tipoSolicitacao === 'Aceleração') {
+      if (orderData.status === 'completed') {
+        respostaIA += `Your order *ID ${orderData.orderId}* is already *complete*. We cannot expedite an order that has already been completed.\n\n`;
+      } else if (orderData.status === 'canceled') {
+        respostaIA += `Your order *ID ${orderData.orderId}* has been *canceled*. We cannot expedite an order that has been canceled.\n\n`;
+      } else {
+        respostaIA += `Your *acceleration* request has been forwarded to the responsible team. We will try to expedite your order *ID ${orderData.orderId}*.\n\n`;
+      }
+    } else if (tipoSolicitacao === 'Refil/Garantia') {
+      respostaIA += `Your *refill* or *warranty* request will be forwarded to our specialized technical team for analysis. We will contact you soon.\n\n`;
+    } else {
+      respostaIA += `Your request will be forwarded to our specialized technical team for analysis. We will contact you soon.\n\n`;
+    }
+  }
+
+  // **Conclusion and links**
+  respostaIA += `---\nIf you need more information, we are available to help.\n\nBest regards,\n\n${nomeAtendente}\n\n`;
+  respostaIA += `➕ Join us as a reseller for just $25 - [Reseller Link](${linkRevendedor})\n`;
+  respostaIA += `➕ Invite friends, share your link, and earn! - [Affiliate Link](${linkAfiliado})\n`;
+
+  // **A tradução só acontece se o idioma detectado não for inglês**
+  let respostaTraduzida = respostaIA;
+  if (idiomaDetectado !== 'en') {
+    console.log(`🌍 Traduzindo a resposta para o idioma: ${idiomaDetectado}`);
+    respostaTraduzida = await traduzirTexto(respostaIA, idiomaDetectado); // Traduz apenas se não for inglês
+  }
+
+  // Retornamos a resposta gerada, sem enviar diretamente
   return respostaTraduzida;
 }
 
@@ -275,4 +595,9 @@ module.exports = {
   gerarRespostaFinal,
   verificarTipoDeSolicitacao,
   detectLanguage,
+  traduzirTexto,
+  gerarMensagemSolicitandoOrderId,
+  extrairTodosOrderIds,
+  processarOrderIds,
+  cortarMensagemUtil,
 };

@@ -23,11 +23,11 @@ axios.interceptors.response.use(
         ? cleanTrace.replace(process.cwd(), '.')
         : cleanTrace;
 
-      console.log('\n📊 Detalhes do uso da OpenAI:');
-      console.log(`📁 Origem: ${relativePath}`);
-      console.log(`📥 Prompt tokens: ${prompt_tokens}`);
-      console.log(`📤 Resposta tokens: ${completion_tokens}`);
-      console.log(`🧮 Total tokens: ${total_tokens}\n`);
+      //console.log('\n📊 Detalhes do uso da OpenAI:');
+      // console.log(`📁 Origem: ${relativePath}`);
+      //console.log(`📥 Prompt tokens: ${prompt_tokens}`);
+      // console.log(`📤 Resposta tokens: ${completion_tokens}`);
+      //console.log(`🧮 Total tokens: ${total_tokens}\n`);
     }
 
     return response;

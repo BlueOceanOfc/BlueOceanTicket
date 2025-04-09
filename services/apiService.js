@@ -115,7 +115,7 @@ async function registrarNoGoogleSheets(
   user,
   link,
   startCount,
-  amount,
+  quantity,
   serviceId,
   serviceName,
   status,
@@ -133,7 +133,7 @@ async function registrarNoGoogleSheets(
       User: user,
       Link: link,
       StartCount: startCount,
-      Amount: amount,
+      Quantity: quantity,
       ServiceId: serviceId,
       ServiceName: serviceName,
       Status: status,
@@ -179,7 +179,7 @@ async function buscarStatusPedido(orderId) {
       user: dadosPedido.user,
       link: dadosPedido.link,
       startCount: dadosPedido.start_count,
-      amount: dadosPedido.charge.formatted,
+      quantity: dadosPedido.quantity, // Corrigido para acessar diretamente a quantidade
       serviceId: dadosPedido.service_id,
       serviceName: dadosPedido.service_name,
       status: dadosPedido.status,
@@ -240,7 +240,7 @@ async function processarTicket(ticketId) {
       orderData.user,
       orderData.link,
       orderData.startCount,
-      orderData.amount,
+      orderData.quantity,
       orderData.serviceId,
       orderData.serviceName,
       orderData.status,
@@ -338,6 +338,7 @@ async function salvarMensagensNoArquivo(
 function removerTagsHTML(texto) {
   return texto.replace(/<\/?[^>]+(>|$)/g, '').trim();
 }
+
 
 // Função para garantir que o diretório existe
 function garantirDiretorio() {
