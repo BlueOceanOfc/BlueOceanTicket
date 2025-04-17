@@ -1,11 +1,13 @@
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 require('./services/axiosInterceptor');
 const axios = require('axios');
-const logger = require('./logger'); // Sistema de logs
+const { logger, log, setSender } = require('./logger'); // Sistema de logs
 const config = require('./config'); // Arquivo de configuração
 const sheetsService = require('./services/sheetsService'); // Serviço para registrar no Google Sheets
-const app = require('./app'); // Importa o app.js
+//const app = require('./app'); // Importa o app.js
 const chalk = require('chalk');
-const { gerarRespostaIA } = require('./services/openAIService'); // Função para gerar resposta da IA
+
 const { responderTicket } = require('./services/apiService'); // ou o caminho correto do arquivo onde essa função está definida
 const { format } = require('date-fns'); // Adiciona no topo do seu index.js, se ainda não tiver
 const { ptBR } = require('date-fns/locale');
@@ -27,16 +29,16 @@ const {
   gerarMensagemSolicitandoOrderId,
   extrairTodosOrderIds,
   cortarMensagemUtil,
-} = require('./iaSolicitacao');
+} = require('./services/iaSolicitacao');
 
 function separador() {
-  console.log(
+  logger.info(
     chalk.blue(
       '\n=====================================================================\n',
     ),
   );
 }
-
+console.log(logger);
 // Função para registrar os dados no Google Sheets
 async function registrarNoGoogleSheets(orderData) {
   try {
@@ -52,6 +54,7 @@ async function registrarNoGoogleSheets(orderData) {
       status,
       remains,
       createdAt,
+      provider,
       mensagemDoCliente,
       lastMessage,
     } = orderData;
@@ -69,15 +72,17 @@ async function registrarNoGoogleSheets(orderData) {
       status,
       remains,
       createdAt,
+      provider,
       mensagemDoCliente,
       lastMessage, // Adiciona a última mensagem
     ];
 
     // Chama o serviço para registrar no Google Sheets
     await sheetsService.registrarNoGoogleSheets(dados); // Usando a função existente
-  } catch (erro) {}
+  } catch (erro) {
+    logger.error(`Erro ao registrar no Google Sheets: ${erro.message}`);
+  }
 }
-
 // Função para registrar aviso de solicitação ambígua
 async function registrarAvisoAmbiguo(ticketId, messages) {
   try {
@@ -117,11 +122,11 @@ async function registrarAvisoAmbiguo(ticketId, messages) {
 
     // Registra o aviso no Google Sheets
     await sheetsService.registrarNoGoogleSheets(aviso);
-    console.log(
+    logger.info(
       `⚠️ Aviso de solicitação ambígua registrado para o ticket ${ticketId}`,
     );
   } catch (erro) {
-    console.log(
+    logger.info(
       `❌ Erro ao registrar aviso de solicitação ambígua: ${erro.message}`,
     );
   }
@@ -137,13 +142,15 @@ function limparMensagem(mensagem) {
   return mensagem.replace(textoPadrao, '').trim();
 }
 
-// Função principal para processar um ticket
 async function processarTicket(ticketId, lastExecution) {
   try {
+    // Variável para controle de resposta enviada
+    let respostaEnviada = false;
+
     // Busca o ticket
     const ticket = await buscarTicket(ticketId);
     if (!ticket) {
-      console.log(`❌ Ticket com ID ${ticketId} não encontrado.`);
+      logger.info(`❌ Ticket com ID ${ticketId} não encontrado.`);
       return; // Não faz nada se o ticket não existir
     }
 
@@ -152,7 +159,7 @@ async function processarTicket(ticketId, lastExecution) {
     // Verifica se alguma mensagem foi enviada pelo atendente (staff)
     const mensagemDeAtendente = messages.find((msg) => msg.is_staff);
     if (mensagemDeAtendente) {
-      console.log(
+      logger.info(
         `✅ Ticket ${ticketId} já foi respondido. Ignorando novas mensagens.`,
       );
       return; // Não processa se já houver qualquer resposta do atendente
@@ -162,7 +169,7 @@ async function processarTicket(ticketId, lastExecution) {
     const primeiraMensagem = messages.find((msg) => !msg.is_staff);
 
     if (!primeiraMensagem) {
-      console.log(
+      logger.info(
         `❌ Nenhuma mensagem do cliente encontrada no ticket ${ticketId}.`,
       );
       return; // Não faz nada se não houver mensagens do cliente
@@ -172,11 +179,11 @@ async function processarTicket(ticketId, lastExecution) {
     const mensagemLimpa = limparMensagem(primeiraMensagem.message);
 
     // Log da mensagem limpa (o que o processador realmente leu)
-    console.log(`mensagem lida: ${cortarMensagemUtil(mensagemLimpa)}`);
+    logger.info(`mensagem lida: ${cortarMensagemUtil(mensagemLimpa)}`);
 
     // Verifica se a mensagem limpa ainda tem conteúdo
     if (!mensagemLimpa) {
-      console.log(
+      logger.info(
         `❌ A mensagem do ticket ${ticketId} foi removida após a limpeza.`,
       );
       return;
@@ -187,7 +194,7 @@ async function processarTicket(ticketId, lastExecution) {
 
     // Verifica se o ticket foi atualizado após a última execução
     if (lastUpdateTime <= lastExecTime) {
-      console.log(
+      logger.info(
         `Ticket ID ${ticketId} não tem novas atualizações após a última execução.`,
       );
       return; // Não processa se não houver atualizações novas
@@ -198,7 +205,7 @@ async function processarTicket(ticketId, lastExecution) {
 
     // Extraindo os Order IDs diretamente usando a função `extrairTodosOrderIds`
     const orderIdsExtraidos = extrairTodosOrderIds(mensagemLimpa);
-    console.log(
+    logger.info(
       `🔑 [processarTicket] Order IDs extraídos: ${orderIdsExtraidos.join(
         ', ',
       )}`,
@@ -211,7 +218,7 @@ async function processarTicket(ticketId, lastExecution) {
 
     // Se o tipo de solicitação for Pago ou Outro, ignora a solicitação
     if (['Pagamento', 'Outro'].includes(tipoSolicitacao)) {
-      console.log(
+      logger.info(
         `🚫 [processarTicket] Ticket ID ${ticketId} ignorado por ser do tipo: ${tipoSolicitacao}`,
       );
 
@@ -227,25 +234,30 @@ async function processarTicket(ticketId, lastExecution) {
 
     // Verifica se os Order IDs foram encontrados
     if (orderIdsExtraidos.length === 0) {
-      console.log(
+      logger.info(
         `❓ [processarTicket] Ticket ID ${ticketId} não contém Order ID. Solicitando ao cliente...`,
       );
 
-      // Solicita o Order ID
-      const mensagemSolicitacao = await gerarMensagemSolicitandoOrderId(
-        idiomaDetectado,
-      );
-      console.log(
-        `❓ [processarTicket] Solicitando Order ID ao cliente no Ticket ID ${ticketId}.`,
-      );
-      await responderTicket(ticketId, mensagemSolicitacao);
+      // Solicita o Order ID, mas só envia se ainda não tiver sido enviado
+      if (!respostaEnviada) {
+        const mensagemSolicitacao = await gerarMensagemSolicitandoOrderId(
+          idiomaDetectado,
+        );
+        logger.info(
+          `❓ [processarTicket] Solicitando Order ID ao cliente no Ticket ID ${ticketId}.`,
+        );
+        await responderTicket(ticketId, mensagemSolicitacao);
 
-      // Registra a solicitação no Google Sheets
-      await registrarNoGoogleSheets({
-        orderId: 'Não informado',
-        mensagemDoCliente: primeiraMensagem.message,
-        lastMessage: mensagemSolicitacao,
-      });
+        // Marca que a resposta foi enviada
+        respostaEnviada = true;
+
+        // Registra a solicitação no Google Sheets
+        await registrarNoGoogleSheets({
+          orderId: 'Não informado',
+          mensagemDoCliente: primeiraMensagem.message,
+          lastMessage: mensagemSolicitacao,
+        });
+      }
 
       return; // Não continua o processamento dos pedidos
     }
@@ -259,7 +271,7 @@ async function processarTicket(ticketId, lastExecution) {
       try {
         let orderData = await buscarStatusPedido(orderId);
         if (!orderData) {
-          console.log(`❌ Pedido ID ${orderId} não encontrado.`);
+          logger.info(`❌ Pedido ID ${orderId} não encontrado.`);
           pedidosNaoAptos.push({ orderId, motivo: 'Não encontrado' });
           continue;
         }
@@ -273,7 +285,7 @@ async function processarTicket(ticketId, lastExecution) {
         }
         orderDataList.push(orderData);
       } catch (error) {
-        console.log(
+        logger.info(
           `❌ Erro ao buscar o pedido ID ${orderId}: ${error.message}`,
         );
       }
@@ -284,7 +296,7 @@ async function processarTicket(ticketId, lastExecution) {
       (mensagem) => mensagem.sender === 'client' || !mensagem.is_staff,
     );
 
-    console.log(
+    logger.info(
       `📥 Mensagens do cliente encontradas:`,
       mensagensDoCliente.map((m) => m.message),
     );
@@ -293,20 +305,12 @@ async function processarTicket(ticketId, lastExecution) {
     function tirarNumero(mensagem) {
       if (!mensagem) return '';
 
-      // 1. Remove tags HTML (ex: <div>, <br>, etc)
+      // Remove tags HTML e outros ajustes
       mensagem = mensagem.replace(/<[^>]*>/g, ' ');
-
-      // 2. Separa números colados com letras
       mensagem = mensagem.replace(/(\d+)([a-zA-Z]+)/g, '$1 $2'); // número + letras
       mensagem = mensagem.replace(/([a-zA-Z]+)(\d+)/g, '$1 $2'); // letras + número
-
-      // 3. Remove caracteres especiais e números
-      mensagem = mensagem.replace(/[^a-zA-ZÀ-ÿ\s]/g, '');
-
-      // 4. Remove espaços duplicados e trim
-      mensagem = mensagem.replace(/\s+/g, ' ').trim();
-
-      // 5. Converte para minúsculas
+      mensagem = mensagem.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''); // Remove caracteres especiais
+      mensagem = mensagem.replace(/\s+/g, ' ').trim(); // Remove espaços extras
       return mensagem.toLowerCase();
     }
 
@@ -316,7 +320,7 @@ async function processarTicket(ticketId, lastExecution) {
     const mensagemCortada = cortarMensagemUtil(primeiraMensagemBruta);
     const primeiraMensagemDoCliente = tirarNumero(mensagemCortada);
 
-    console.log(
+    logger.info(
       `✅ Primeira mensagem do cliente usada para registro: ${primeiraMensagemDoCliente}`,
     );
 
@@ -329,16 +333,17 @@ async function processarTicket(ticketId, lastExecution) {
       idiomaDetectado,
     );
 
-    console.log(`✉️ [processarTicket] Resposta gerada: ${respostaFinal}`);
+    logger.info(`✉️ [processarTicket] Resposta gerada: ${respostaFinal}`);
 
-    // Envia a resposta ao cliente
-    if (respostaFinal) {
-      console.log(
+    // Envia a resposta ao cliente, mas apenas se ainda não tiver sido enviada
+    if (respostaFinal && !respostaEnviada) {
+      logger.info(
         `📝 [processarTicket] Enviando resposta para o ticket ${ticketId}`,
       );
       await responderTicket(ticketId, respostaFinal);
 
-      // Registrar a resposta (última mensagem enviada) no Google Sheets
+      // Marca que a resposta foi enviada
+      respostaEnviada = true;
     }
 
     // Registrar os dados para todos os Order IDs extraídos
@@ -346,7 +351,7 @@ async function processarTicket(ticketId, lastExecution) {
       try {
         let orderData = await buscarStatusPedido(orderId);
         if (!orderData) {
-          console.log(`❌ Pedido ID ${orderId} não encontrado.`);
+          logger.info(`❌ Pedido ID ${orderId} não encontrado.`);
           continue;
         }
 
@@ -362,96 +367,159 @@ async function processarTicket(ticketId, lastExecution) {
           status: orderData.status,
           remains: orderData.remains,
           createdAt: orderData.createdAt,
+          provider: orderData.provider,
           mensagemDoCliente: primeiraMensagemDoCliente,
           lastMessage: respostaFinal,
         });
 
-        console.log(
+        logger.info(
           `📊 Registro no Google Sheets: ✅ Sucesso para o Pedido ID ${orderId}`,
         );
       } catch (error) {
-        console.log(`📊 Registro no Google Sheets: ❌ Erro - ${error.message}`);
+        logger.info(`📊 Registro no Google Sheets: ❌ Erro - ${error.message}`);
       }
     }
 
-    console.log('------------------------------------------------------------');
+    logger.info('------------------------------------------------------------');
   } catch (error) {
-    console.log(`❌ Erro ao processar o ticket ${ticketId}: ${error.message}`);
+    logger.info(`❌ Erro ao processar o ticket ${ticketId}: ${error.message}`);
   }
 }
 
 let isProcessing = false; // Variável de controle para evitar execução duplicada
+let automationInterval; // Declare o intervalo globalmente
 
-// Função para fazer consultas a cada 5 segundos
-function iniciarConsultaPeriodica() {
-  // Definindo o intervalo de 5 segundos (5000 milissegundos)
-  setInterval(async () => {
+// Função para iniciar a automação
+function iniciarAutomacao() {
+  logger.info(chalk.blue.bold('✅ Iniciando a automação...'));
+
+  // Definindo o intervalo de 20 segundos (20000 milissegundos)
+  automationInterval = setInterval(async () => {
     if (isProcessing) return; // Evita novas execuções enquanto uma já está em andamento
-    isProcessing = true;
+    isProcessing = true; // Marca que está processando
 
-    console.log('🔍 Iniciando consulta a cada 5 segundos...');
-    console.log('');
+    logger.info('🔍 Iniciando consulta a cada 20 segundos...');
 
-    await processarTodosTickets(); // Chama a função que processa os tickets
-
-    // Após o processamento, reinicia o controle de execução
-    isProcessing = false;
-  }, 5000); // 5000 milissegundos = 5 segundos
+    try {
+      await processarTodosTickets(); // Executa o processo
+    } catch (erro) {
+      logger.error(`Erro ao processar os tickets: ${erro.message}`);
+    } finally {
+      isProcessing = false; // Sempre reseta após a execução
+    }
+  }, 20000); // Intervalo de 20 segundos
 }
 
-// Função para processar todos os tickets (respondidos ou novos) após a última execução
+function pararAutomacao() {
+  logger.info(chalk.blue.bold('🛑 Parando a automação...'));
+
+  // Adiciona um delay para a parada ser visualmente mais interessante
+  setTimeout(() => {
+    logger.info(chalk.yellow.bold('⚠️ Automação parada.'));
+    clearInterval(automationInterval); // Limpa o intervalo da automação
+  }, 1000); // Atraso de 1 segundo para dar um efeito de transição
+}
+
+// Função para processar todos os tickets
 async function processarTodosTickets() {
-  const tickets = await listarTickets();
+  try {
+    const tickets = await listarTickets();
 
-  if (tickets.length === 0) {
-    console.log('📭 Nenhum ticket encontrado.'); // Só mostra o log se não houver tickets
-    separador();
-    return;
-  }
+    if (tickets.length === 0) {
+      logger.info('📭 Nenhum ticket encontrado.');
+      separador();
+      return;
+    }
 
-  const ultimaAtualizacao = new Date(
-    Math.max(...tickets.map((t) => t.last_update_timestamp * 1000)),
-  );
-  const ultimaAtualizacaoFormatada = format(
-    ultimaAtualizacao,
-    "EEEE, dd 'de' MMMM 'de' yyyy'\n⏰ Horário:' HH:mm:ss",
-    { locale: ptBR },
-  );
-
-  // Logs visuais direto com console.log
-  console.log(
-    `📅 Última atualização registrada: ${ultimaAtualizacaoFormatada}`,
-  );
-  console.log(`📨 Total de tickets encontrados: ${tickets.length}`);
-
-  const lastExecution = obterUltimaExecucao();
-  const ticketsParaProcessar = tickets.filter((ticket) => {
-    const lastUpdateTime = new Date(ticket.last_update_timestamp * 1000);
-    return lastUpdateTime > new Date(lastExecution);
-  });
-
-  if (ticketsParaProcessar.length === 0) {
-    console.log(
-      '🟡 Nenhum novo ticket ou mensagem desde a última verificação.',
+    const ultimaAtualizacao = new Date(
+      Math.max(...tickets.map((t) => t.last_update_timestamp * 1000)),
     );
+    const ultimaAtualizacaoFormatada = format(
+      ultimaAtualizacao,
+      "EEEE, dd 'de' MMMM 'de' yyyy'\n⏰ Horário:' HH:mm:ss",
+      { locale: ptBR },
+    );
+
+    // Logs visuais direto com logger.info
+    logger.info(
+      `📅 Última atualização registrada: ${ultimaAtualizacaoFormatada}`,
+    );
+    logger.info(`📨 Total de tickets encontrados: ${tickets.length}`);
+
+    const lastExecution = obterUltimaExecucao();
+    const ticketsParaProcessar = tickets.filter((ticket) => {
+      const lastUpdateTime = new Date(ticket.last_update_timestamp * 1000);
+      return lastUpdateTime > new Date(lastExecution);
+    });
+
+    if (ticketsParaProcessar.length === 0) {
+      logger.info(
+        '🟡 Nenhum novo ticket ou mensagem desde a última verificação.',
+      );
+      separador();
+      return;
+    }
+
+    logger.info(
+      `✅ Novas mensagens detectadas: ${ticketsParaProcessar.length} ticket(s) com atualização.`,
+    );
+
+    // Processa os tickets um por vez para evitar múltiplas mensagens enviadas
+    for (const ticket of ticketsParaProcessar) {
+      try {
+        // Aguarda o processamento de um ticket antes de iniciar o próximo
+        await processarTicket(ticket.id, lastExecution);
+      } catch (erro) {
+        logger.error(`Erro ao processar ticket ${ticket.id}: ${erro.message}`);
+      }
+    }
+
+    atualizarUltimaExecucao();
     separador();
-    return;
+  } catch (erro) {
+    logger.error(`Erro ao processar os tickets: ${erro.message}`);
   }
-
-  console.log(
-    `✅ Novas mensagens detectadas: ${ticketsParaProcessar.length} ticket(s) com atualização.`,
-  );
-
-  // Processa os tickets em paralelo
-  const processamentos = ticketsParaProcessar.map((ticket) =>
-    processarTicket(ticket.id, lastExecution),
-  );
-  await Promise.all(processamentos);
-
-  atualizarUltimaExecucao();
-
-  separador();
 }
 
-// Inicia a consulta periódica
-iniciarConsultaPeriodica();
+// Função de watchdog para verificar se o processo está travado por muito tempo
+let lastExecutionTime = Date.now(); // Inicia com o timestamp atual
+
+setInterval(() => {
+  try {
+    if (isProcessing && Date.now() - lastExecutionTime > 10000) {
+      // 10 segundos travado
+      logger.error('⚠️ Automação travada. Reiniciando o processo...');
+      isProcessing = false; // Reseta o processamento travado
+      iniciarAutomacao(); // Reinicia a automação
+    }
+  } catch (erro) {
+    logger.error(`Erro no intervalo de execução: ${erro.message}`);
+  }
+}, 20000); // Verifica a cada 20 segundos
+
+// Função para reiniciar a automação em caso de falha crítica
+async function retryExecution() {
+  let retries = 3; // Tentar 3 vezes
+  while (retries > 0) {
+    try {
+      await processarTodosTickets(); // Tentativa de processar novamente
+      break; // Se funcionar, sai do loop
+    } catch (erro) {
+      logger.error(`Erro ao tentar processar: ${erro.message}`);
+      retries -= 1;
+      if (retries === 0) {
+        logger.error('🚨 Tentativas esgotadas. Automação reiniciada.');
+        iniciarAutomacao(); // Reinicia a automação se as tentativas falharem
+      } else {
+        logger.info(`🔄 Tentando novamente... Restam ${retries} tentativa(s).`);
+      }
+    }
+  }
+}
+
+module.exports = {
+  iniciarAutomacao,
+  pararAutomacao,
+  processarTodosTickets,
+  processarTicket,
+};

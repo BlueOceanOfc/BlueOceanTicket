@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <link rel="icon" type="image/png" href="assets/smmex logo.png" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Automação com Terminal</title>
+
+    <!-- Google Fonts -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Coloque no <head> -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fira+Code&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- XTerm.js -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      /* Animações de entrada */
+      section {
+        opacity: 0;
+        transform: translateY(20px);
+        animation: fadeInUp 0.6s ease forwards;
+      }
+
+      section:nth-of-type(2) {
+        animation-delay: 0.2s;
+      }
+      section:nth-of-type(3) {
+        animation-delay: 0.4s;
+      }
+      section:nth-of-type(4) {
+        animation-delay: 0.6s;
+      }
+
+      @keyframes fadeInUp {
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Botões animados */
+      .button-group button {
+        opacity: 0;
+        transform: translateY(10px);
+        animation: fadeButtons 0.4s ease forwards;
+      }
+
+      .button-group button:nth-child(1) {
+        animation-delay: 0.8s;
+      }
+      .button-group button:nth-child(2) {
+        animation-delay: 1s;
+      }
+
+      @keyframes fadeButtons {
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Pressão ao clicar */
+      button:active {
+        transform: scale(0.97);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2) inset;
+      }
+
+      /* Título com efeito de digitação */
+      h1 {
+        overflow: hidden;
+        white-space: nowrap;
+        border-right: 2px solid #3b82f6;
+        width: 0;
+        animation: typing 4s steps(40, end) forwards, blink 0.7s step-end 5;
+      }
+
+      @keyframes typing {
+        to {
+          width: 100%;
+        }
+      }
+
+      @keyframes blink {
+        50% {
+          border-color: transparent;
+        }
+      }
+
+      /* Brilho terminal dark */
+      body.dark-mode #terminal-container {
+        background-color: #161b22;
+        color: #c9d1d9;
+        box-shadow: 0 0 20px rgba(59, 130, 246, 0.25);
+      }
+
+      /* Botão carregando */
+      button.loading .btn-text::after {
+        content: ' ⏳';
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      body {
+        font-family: 'Roboto', sans-serif;
+        background-color: #f4f7fc;
+        color: #333;
+        margin: 0;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 100vh;
+        transition: background-color 0.3s, color 0.3s;
+      }
+
+      body.dark-mode {
+        background-color: #121212;
+        color: #f4f7fc;
+      }
+
+      /* ==== LOGO ==== */
+      .logo-container {
+        margin-top: 40px;
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: center;
+      }
+
+      .logo-container img {
+        width: 250px;
+        height: auto;
+        max-width: 100%;
+        transition: filter 0.3s ease;
+      }
+
+      body.dark-mode .logo-container img {
+        filter: brightness(1.3);
+      }
+
+      h1 {
+        font-size: 2.2rem;
+        color: #3b82f6;
+        margin-bottom: 10px;
+        text-align: center;
+      }
+
+      section {
+        width: 100%;
+        max-width: 900px;
+        margin: 20px 0;
+        padding: 0 15px;
+        text-align: center;
+      }
+
+      button {
+        background-color: #3b82f6;
+        color: #fff;
+        border: none;
+        padding: 12px 20px;
+        font-size: 1rem;
+        margin: 5px;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+        flex: 1;
+        min-width: 140px;
+      }
+
+      button:hover:not(:disabled) {
+        background-color: #2563eb;
+      }
+
+      button:disabled {
+        background-color: #aaa;
+        cursor: not-allowed;
+      }
+
+      .button-group {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+      }
+
+      #status {
+        font-size: 1.1rem;
+        margin-top: 10px;
+        color: #6b7280;
+        text-align: center;
+      }
+
+      #terminal-container {
+        width: 100%;
+        height: 320px;
+        background-color: #0d1117; /* tom escuro agradável */
+        border-radius: 8px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        overflow: auto;
+        padding: 10px 15px;
+        font-family: 'Fira Code', monospace;
+        font-size: 0.95rem;
+        line-height: 1.4;
+        color: #c9d1d9;
+        border: 1px solid #30363d;
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+
+      /* ==== TOGGLE SWITCH ==== */
+      .toggle-switch {
+        position: fixed;
+        top: 60px;
+        right: 20px;
+        z-index: 1000;
+      }
+
+      .theme-switch {
+        position: relative;
+        display: inline-block;
+        width: 60px;
+        height: 30px;
+      }
+
+      .theme-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      .xterm-screen {
+        display: flex;
+        justify-content: center;
+      }
+
+      .slider {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        border-radius: 34px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 6px;
+        font-size: 16px;
+      }
+
+      .slider::before {
+        content: '';
+        position: absolute;
+        height: 22px;
+        width: 22px;
+        left: 4px;
+        top: 4px;
+        background-color: white;
+        border-radius: 50%;
+        transition: transform 0.3s ease;
+        z-index: 1;
+      }
+
+      input:checked + .slider {
+        background-color: #3b82f6;
+      }
+
+      input:checked + .slider::before {
+        transform: translateX(30px);
+      }
+
+      .slider .emoji-light {
+        color: #fff700;
+      }
+
+      .slider .emoji-dark {
+        color: #fff;
+      }
+
+      @media (max-width: 600px) {
+        .theme-switch {
+          width: 50px;
+          height: 26px;
+        }
+
+        .slider {
+          font-size: 14px;
+        }
+
+        .slider::before {
+          height: 18px;
+          width: 18px;
+          top: 4px;
+          left: 4px;
+        }
+
+        input:checked + .slider::before {
+          transform: translateX(24px);
+        }
+
+        .logo-container img {
+          width: 250px;
+          height: auto;
+          max-width: 100%;
+          transition: filter 0.3s ease;
+        }
+      }
+      /* ==== SCROLLBAR PERSONALIZADA DO TERMINAL ==== */
+      #terminal-container::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+
+      #terminal-container::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      #terminal-container::-webkit-scrollbar-thumb {
+        background-color: #444;
+        border-radius: 8px;
+        border: 2px solid transparent;
+        background-clip: content-box;
+      }
+
+      #terminal-container::-webkit-scrollbar-thumb:hover {
+        background-color: #666;
+      }
+      /* Scrollbar personalizada dentro do XTerm */
+      .terminal .xterm-viewport::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .terminal .xterm-viewport::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .terminal .xterm-viewport::-webkit-scrollbar-thumb {
+        background-color: #444;
+        border-radius: 8px;
+        border: 2px solid transparent;
+        background-clip: content-box;
+      }
+
+      .terminal .xterm-viewport::-webkit-scrollbar-thumb:hover {
+        background-color: #666;
+      }
+      /* === Botão Flutuante para voltar ao topo === */
+      #scrollTopBtn {
+        display: none;
+        position: fixed;
+        bottom: 40px;
+        right: 30px;
+        z-index: 999;
+        font-size: 18px;
+        border: none;
+        outline: none;
+        background-color: #3b82f6;
+        color: white;
+        cursor: pointer;
+        padding: 12px 16px;
+        border-radius: 50%;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        transition: opacity 0.4s ease;
+      }
+      #scrollTopBtn:hover {
+        background-color: #2563eb;
+      }
+
+      /* === Animação ao rolar === */
+      .reveal {
+        opacity: 0;
+        transform: translateY(30px);
+        transition: opacity 0.8s ease, transform 0.8s ease;
+      }
+      .reveal.active {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      #statusIndicator {
+        font-weight: bold;
+        padding: 8px 16px;
+        border-radius: 6px;
+        display: inline-block;
+        transition: background-color 0.3s ease;
+      }
+
+      .status-running {
+        background-color: #28a745; /* Verde */
+        color: white;
+      }
+
+      .status-stopped {
+        background-color: #dc3545; /* Vermelho */
+        color: white;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Toggle Switch no topo direito -->
+
+    <div class="toggle-switch">
+      <label class="theme-switch">
+        <input type="checkbox" id="darkModeToggle" />
+        <span class="slider">
+          <span class="emoji-light">🌙</span>
+          <span class="emoji-dark">☀️</span>
+        </span>
+      </label>
+    </div>
+
+    <!-- Logo -->
+    <div class="logo-container">
+      <img src="assets/smmex logo.png" alt="Logo da Aplicação" />
+    </div>
+
+    <h1>Automação Tickets</h1>
+
+    <!-- Botões -->
+    <section class="reveal">
+      <div class="button-group">
+        <button id="startButton">
+          <span class="btn-text">Iniciar Automação</span>
+        </button>
+
+        <button id="stopButton" disabled>Parar Automação</button>
+      </div>
+    </section>
+
+    <!-- Status -->
+    <section class="reveal">
+      <h2>Status da Automação</h2>
+      <p id="status">
+        <span id="statusIndicator" class="status-stopped">
+          Status: Automação Parada
+        </span>
+      </p>
+    </section>
+
+    <!-- Terminal -->
+    <section class="reveal">
+      <h2>Saída do Terminal</h2>
+      <div id="terminal-container"></div>
+    </section>
+
+    <!-- Script para alternar modo escuro -->
+    <script>
+      const toggle = document.getElementById('darkModeToggle');
+
+      window.addEventListener('DOMContentLoaded', () => {
+        const savedTheme = localStorage.getItem('darkMode') === 'true';
+        document.body.classList.toggle('dark-mode', savedTheme);
+        toggle.checked = savedTheme;
+
+        // Ativa scroll reveal
+        revealScroll();
+
+        // Botão de automação
+        const startButton = document.getElementById('startButton');
+        if (startButton) {
+          startButton.addEventListener('click', () => {
+            const btn = document.getElementById('startButton');
+            btn.classList.add('loading');
+            setTimeout(() => {
+              btn.classList.remove('loading');
+            }, 3000);
+          });
+        }
+      });
+
+      toggle.addEventListener('change', () => {
+        const isDark = toggle.checked;
+        document.body.classList.toggle('dark-mode', isDark);
+        localStorage.setItem('darkMode', isDark);
+      });
+
+      // Remove o cursor piscante do h1 após a digitação
+      setTimeout(() => {
+        const h1 = document.querySelector('h1');
+        h1.style.borderRight = 'none';
+      }, 5000);
+
+      window.addEventListener('DOMContentLoaded', () => {
+        // Garantir que o botão scrollTopBtn está disponível
+        const scrollTopBtn = document.getElementById('scrollTopBtn');
+
+        // Verificar se o botão existe
+        if (scrollTopBtn) {
+          // Mostrar ou esconder o botão "Voltar ao Topo" com base no scroll
+          window.addEventListener('scroll', () => {
+            revealScroll();
+            if (document.documentElement.scrollTop > 300) {
+              scrollTopBtn.style.display = 'block'; // Exibe o botão
+            } else {
+              scrollTopBtn.style.display = 'none'; // Esconde o botão
+            }
+          });
+
+          // Adiciona o evento de clique no botão "Voltar ao Topo"
+          scrollTopBtn.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' }); // Rola para o topo suavemente
+          });
+        } else {
+          console.log('Botão "Voltar ao topo" não encontrado');
+        }
+      });
+
+      // Anima os elementos com classe .reveal quando aparecerem
+      function revealScroll() {
+        const reveals = document.querySelectorAll('.reveal');
+        for (const el of reveals) {
+          const windowHeight = window.innerHeight;
+          const elementTop = el.getBoundingClientRect().top;
+          const elementVisible = 100;
+
+          if (elementTop < windowHeight - elementVisible) {
+            el.classList.add('active');
+          }
+        }
+      }
+    </script>
+
+    <!-- Mova seu script para o final, logo antes da tag </body> -->
+    <script src="renderer.js"></script>
+
+    <button id="scrollTopBtn" title="Voltar ao topo">⬆️</button>
+  </body>
+</html>

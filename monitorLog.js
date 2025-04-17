@@ -1,6 +1,6 @@
-/*const fs = require('fs');
+const fs = require('fs');
 const path = require('path');
-const { gerarRespostaIA } = require('./services/openAIService'); // Importando a função de IA
+//const { gerarRespostaIA } = require('./services/openAIService'); // Importando a função de IA
 
 // Caminho para o arquivo de log
 const logFilePath = './messages_logs/ticket_messages_log.txt';
@@ -32,4 +32,3 @@ fs.watchFile(logFilePath, { interval: 10000 }, (curr, prev) => {
 });
 
 console.log('Monitorando o arquivo de log...');
-*/

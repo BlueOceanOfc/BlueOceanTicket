@@ -1,58 +1,34 @@
-const removerTagsHTML = (html) => {
-  return html.replace(/<\/?[^>]+(>|$)/g, ''); // Remove tags HTML simples
+const axios = require('axios');
+
+// URL da API
+const apiUrl = 'https://smmexcellent.com/adminapi/v2/orders/';
+
+// Substitua com o ID do pedido que você deseja consultar
+const orderId = 550039; // Exemplo, substitua pelo ID real
+const apiKey =
+  'qp8r55uij9k07ya2st1mf0d90h70t00f0yaytrg7zqq80oin53eznuh44q7x01h1'; // Substitua pela sua chave de API
+
+// Configuração dos cabeçalhos
+const headers = {
+  'Content-Type': 'application/json',
+  'X-Api-Key': apiKey,
 };
 
-function cortarMensagemUtil(mensagemOriginal) {
-  console.log(`📜 Mensagem original: "${mensagemOriginal}"`);
+// Função para fazer a requisição GET e obter as informações do pedido
+async function getOrderDetails() {
+  try {
+    const response = await axios.get(`${apiUrl}${orderId}`, { headers });
 
-  // Manter as tags HTML para cortar baseado nelas
-  const mensagemComTags = mensagemOriginal;
-
-  // Logando a string completa
-  console.log(`🔧 Mensagem com tags: "${mensagemComTags}"`);
-
-  // Buscar a posição da primeira tag </b> (após "Pedido - Refil e Garantia")
-  const primeiraTagFechamento = mensagemComTags.indexOf('</b>');
-  console.log(`📌 Primeira tag </b> encontrada em: ${primeiraTagFechamento}`);
-
-  if (primeiraTagFechamento !== -1) {
-    // Cortar a mensagem após a primeira tag </b> (onde começa o ID do Pedido)
-    const cortadaComTags = mensagemComTags
-      .slice(primeiraTagFechamento + 4) // Pula o </b> com +4
-      .trim(); // +4 para pular o </b>
-    console.log(
-      `⚡ Mensagem cortada após primeira tag </b>: "${cortadaComTags}"`,
+    // Exibindo a resposta da API
+    console.log('Detalhes do Pedido:', response.data);
+  } catch (error) {
+    // Em caso de erro
+    console.error(
+      'Erro ao obter os detalhes do pedido:',
+      error.response ? error.response.data : error.message,
     );
-
-    // Agora, remover as tags HTML para deixar apenas a parte útil da mensagem
-    let cortadaSemTags = removerTagsHTML(cortadaComTags).trim();
-    console.log(`🔧 Mensagem sem tags HTML: "${cortadaSemTags}"`);
-
-    // Agora, precisamos extrair o número do pedido de uma maneira mais precisa
-    const regexOrderId = /(\d{4,})/; // Captura qualquer número com 4 ou mais dígitos
-    const match = cortadaSemTags.match(regexOrderId);
-
-    if (match) {
-      // Se o número do pedido for encontrado, substituir o texto pelo número do pedido
-      cortadaSemTags =
-        match[1] + cortadaSemTags.slice(match.index + match[0].length); // Concatena o número do pedido com o restante do texto
-    } else {
-      // Se não encontrar o número do pedido, apenas remove o "ID Do Pedido:" do texto
-      cortadaSemTags = cortadaSemTags.replace(/ID Do Pedido:/i, '').trim();
-    }
-
-    console.log(`🔧 Mensagem cortada (final): "${cortadaSemTags}"`);
-
-    return { completa: mensagemComTags, util: cortadaSemTags };
   }
-
-  // Caso não encontre a tag </b>, tenta retornar a mensagem original
-  console.log(`⚡ Mensagem não cortada corretamente, retornando a original.`);
-  return { completa: mensagemComTags, util: mensagemOriginal };
 }
 
-// Teste com uma mensagem de exemplo
-const mensagemTeste =
-  '<div><b>Pedido - Refil e Garantia</b></div><div><b>ID Do Pedido</b>: 1875</div><hr>acelere meu pedido';
-const resultado = cortarMensagemUtil(mensagemTeste);
-console.log('🔧 Resultado final:', resultado);
+// Chama a função para obter os detalhes do pedido
+getOrderDetails();

@@ -1,11 +1,11 @@
 const axios = require('axios');
-const logger = require('./logger'); // Sistema de logs
+const logger = require('../logger'); // Sistema de logs
 const {
   removerTagsHTML,
   extrairOrderIdDaMensagem,
   buscarStatusPedido,
   responderTicket,
-} = require('./services/apiService'); // Funções de utilidades para limpeza de texto e extração do Order ID
+} = require('./apiService'); // Funções de utilidades para limpeza de texto e extração do Order ID
 
 // Adicione essa função no início ou final do arquivo iaSolicitacao.js
 
@@ -14,8 +14,8 @@ const {
 function extrairTodosOrderIds(mensagem) {
   if (!mensagem) return [];
 
-  // Extração dos Order IDs usando regex mais flexível
-  const regexOrderId = /<div><b>Order ID<\/b>: (\d{4,})<\/div>/g;
+  // Alteração na regex para capturar apenas sequências de 6 dígitos
+  const regexOrderId = /<div><b>Order ID<\/b>: (\d{6})<\/div>/g; // 6 dígitos
   let orderIds = [];
   let match;
 
@@ -24,25 +24,25 @@ function extrairTodosOrderIds(mensagem) {
     orderIds.push(match[1]); // Adiciona os IDs encontrados
   }
 
-  // Se não encontrar IDs diretamente, tentamos capturar qualquer sequência numérica de 4+ dígitos
+  // Se não encontrar IDs diretamente, tentamos capturar qualquer sequência numérica de 6 dígitos
   if (orderIds.length === 0) {
-    const regexForaDeTags = /\d{4,}/g;
+    const regexForaDeTags = /\b\d{6}\b/g; // Captura apenas números de 6 dígitos
     orderIds = [...new Set(mensagem.match(regexForaDeTags) || [])]; // Adiciona IDs encontrados fora das tags
   }
 
   // Caso haja IDs concatenados, separe-os (como no caso de 550039550039)
   const orderIdsSeparados = [];
   for (const orderId of orderIds) {
-    if (orderId.length >= 8) {
-      // Se o ID for maior que 8 dígitos, dividimos em dois IDs de 4 dígitos cada
-      const partes = orderId.match(/(\d{4})(\d{4})/);
+    if (orderId.length >= 12) {
+      // Se o ID for maior que 12 dígitos, dividimos em dois IDs de 6 dígitos cada
+      const partes = orderId.match(/(\d{6})(\d{6})/);
       if (partes) {
         orderIdsSeparados.push(partes[1], partes[2]);
       } else {
         orderIdsSeparados.push(orderId); // Se não puder ser dividido, adiciona como está
       }
     } else {
-      orderIdsSeparados.push(orderId); // Adiciona IDs válidos de 4 ou mais dígitos
+      orderIdsSeparados.push(orderId); // Adiciona IDs válidos de 6 dígitos
     }
   }
 
@@ -53,11 +53,6 @@ function extrairTodosOrderIds(mensagem) {
   console.log('✅ Order IDs extraídos:', orderIdsUnicos);
   return orderIdsUnicos;
 }
-
-const mensagemTeste =
-  '<div><b>Orders - Refill</b></div><div><b>Order ID</b>: 550039</div><hr>550039----- speedUp';
-const orderIds = extrairTodosOrderIds(mensagemTeste);
-console.log('Order IDs extraídos:', orderIds);
 
 async function processarOrderIds(
   ticketId,
@@ -82,16 +77,13 @@ async function processarOrderIds(
 
   // Processa cada Order ID
   for (const orderId of orderIds) {
-    // Verifica se o Order ID já foi processado
     if (orderIdsProcessados.has(orderId)) {
       console.log(`🚫 Order ID ${orderId} já foi processado, ignorando.`);
-      continue; // Ignora se já foi processado
+      continue;
     }
 
-    // Marca o Order ID como processado
     orderIdsProcessados.add(orderId);
 
-    // Buscar o status de cada pedido
     let orderData = await buscarStatusPedido(orderId);
     if (!orderData) {
       pedidosNaoAptos.push({ orderId, motivo: 'Não encontrado' });
@@ -103,7 +95,6 @@ async function processarOrderIds(
     } else if (orderData.status === 'completed') {
       pedidosNaoAptos.push({ orderId, motivo: 'Pedido já completo' });
     } else {
-      // Se o pedido estiver apto para a ação solicitada
       pedidosAptos.push(orderId);
     }
   }
@@ -122,12 +113,19 @@ async function processarOrderIds(
     });
   }
 
-  // Enviar a resposta final ao cliente
-  console.log(`-----------ProcessarOdersID-----------`);
-  console.log(
-    `Resposta enviada para o ticket ${ticketId}: ${mensagemRespostas}`,
-  );
-  await responderTicket(ticketId, mensagemRespostas);
+  // Verifique se a resposta já foi enviada
+  let respostaEnviada = false;
+
+  // Enviar a resposta ao cliente
+  if (!respostaEnviada) {
+    console.log(`-----------ProcessarOdersID-----------`);
+    console.log(
+      `Resposta enviada para o ticket ${ticketId}: ${mensagemRespostas}`,
+    );
+    await responderTicket(ticketId, mensagemRespostas);
+    respostaEnviada = true; // Marca a resposta como enviada
+  }
+
   return mensagemRespostas;
 }
 
@@ -359,7 +357,7 @@ async function gerarMensagemSolicitandoOrderId(idiomaDestino = 'en') {
 
 Best regards,
 
-David
+Marcelle
 
 ➕ Join us as a reseller for just $25 - [Reseller Link](https://smmexcellent.com/child-panel)
 ➕ Invite friends, share your link, and earn! - [Affiliate Link](https://smmexcellent.com/affiliates)`;
@@ -513,7 +511,7 @@ async function gerarRespostaFinal(
   orderIds, // Agora, a variável orderIds será sempre um array
   orderDataList, // Agora, isso será uma lista de objetos contendo os dados de cada pedido
   idiomaDetectado,
-  nomeAtendente = 'David', // Nome do atendente
+  nomeAtendente = 'Marcelle', // Nome do atendente
   linkRevendedor = 'https://smmexcellent.com/child-panel',
   linkAfiliado = 'https://smmexcellent.com/affiliates',
 ) {
@@ -554,22 +552,22 @@ async function gerarRespostaFinal(
     // Gerar a resposta para cada pedido com mais detalhes
     if (tipoSolicitacao === 'Cancelamento') {
       if (orderData.status === 'canceled') {
-        respostaIA += `Your order *ID ${orderData.orderId}* has already been *canceled*, as requested. You can place a new order at any time.\n\n`;
+        respostaIA += `Your order <strong>ID ${orderData.orderId}</strong> has already been <strong>canceled</strong>, as requested. You can place a new order at any time.\n\n`;
       } else if (orderData.status === 'completed') {
-        respostaIA += `Your order *ID ${orderData.orderId}* is already *complete*. We cannot cancel an order that has already been completed.\n\n`;
+        respostaIA += `Your order <strong>ID ${orderData.orderId}</strong> is already <strong>complete</strong>. We cannot cancel an order that has already been completed.\n\n`;
       } else {
-        respostaIA += `The *cancellation* request for your order *ID ${orderData.orderId}* has been forwarded to the responsible team. Your order will be canceled soon.\n\n`;
+        respostaIA += `The <strong>cancellation</strong> request for your order <strong>ID ${orderData.orderId}</strong> has been forwarded to the responsible team. Your order will be canceled soon.\n\n`;
       }
     } else if (tipoSolicitacao === 'Aceleração') {
       if (orderData.status === 'completed') {
-        respostaIA += `Your order *ID ${orderData.orderId}* is already *complete*. We cannot expedite an order that has already been completed.\n\n`;
+        respostaIA += `Your order <strong>ID ${orderData.orderId}</strong> is already <strong>complete</strong>. We cannot expedite an order that has already been completed.\n\n`;
       } else if (orderData.status === 'canceled') {
-        respostaIA += `Your order *ID ${orderData.orderId}* has been *canceled*. We cannot expedite an order that has been canceled.\n\n`;
+        respostaIA += `Your order <strong>ID ${orderData.orderId}</strong> has been <strong>canceled</strong>. We cannot expedite an order that has been canceled.\n\n`;
       } else {
-        respostaIA += `Your *acceleration* request has been forwarded to the responsible team. We will try to expedite your order *ID ${orderData.orderId}*.\n\n`;
+        respostaIA += `Your <strong>acceleration</strong> request has been forwarded to the responsible team. We will try to expedite your order <strong>ID ${orderData.orderId}</strong>.\n\n`;
       }
     } else if (tipoSolicitacao === 'Refil/Garantia') {
-      respostaIA += `Your *refill* or *warranty* request will be forwarded to our specialized technical team for analysis. We will contact you soon.\n\n`;
+      respostaIA += `Your <strong>refill</strong> or <strong>warranty</strong> request will be forwarded to our specialized technical team for analysis. We will contact you soon.\n\n`;
     } else {
       respostaIA += `Your request will be forwarded to our specialized technical team for analysis. We will contact you soon.\n\n`;
     }

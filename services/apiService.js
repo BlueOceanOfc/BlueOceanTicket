@@ -3,7 +3,7 @@ const path = require('path');
 const axios = require('axios');
 const logger = require('../logger'); // Sistema de logs
 const sheetsService = require('./sheetsService'); // Serviço de integração com o Google Sheets
-const orderService = require('./orderService'); // Serviço de pedidos
+//const orderService = require('./orderService'); // Serviço de pedidos
 const config = require('../config'); // Arquivo de configuração
 require('dotenv').config(); // Carrega variáveis de ambiente
 
@@ -84,7 +84,7 @@ async function verificarCancelamento(orderId) {
 // Função para responder ao cliente no ticket
 async function responderTicket(ticketId, mensagem) {
   try {
-    const staffName = 'marceloblueocean'; // Nome do atendente que está respondendo ao ticket
+    const staffName = 'Marcelle-IA'; // Nome do atendente que está respondendo ao ticket
 
     if (!mensagem || mensagem.trim().length === 0) {
       logger.error(`Erro: A mensagem não pode estar vazia.`);
@@ -194,7 +194,7 @@ async function buscarStatusPedido(orderId) {
 }
 
 // Função principal para processar tickets e realizar verificações
-async function processarTicket(ticketId) {
+/*async function processarTicket(ticketId) {
   const ticket = await buscarTicket(ticketId);
   if (!ticket) return logger.error(`Ticket com ID ${ticketId} não encontrado.`);
 
@@ -254,7 +254,7 @@ async function processarTicket(ticketId) {
     );
   }
 }
-
+*/
 // Função para listar tickets
 async function listarTickets(limite = 100) {
   try {
@@ -339,7 +339,6 @@ function removerTagsHTML(texto) {
   return texto.replace(/<\/?[^>]+(>|$)/g, '').trim();
 }
 
-
 // Função para garantir que o diretório existe
 function garantirDiretorio() {
   if (!fs.existsSync(MESSAGES_LOG_PATH)) {
@@ -351,7 +350,7 @@ module.exports = {
   garantirDiretorio,
   buscarTicket,
   responderTicket,
-  processarTicket,
+  //processarTicket,
   registrarNoGoogleSheets,
   extrairOrderIdDaMensagem,
   buscarStatusPedido,

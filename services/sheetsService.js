@@ -6,10 +6,17 @@ const logger = require('../logger'); // Sistema de logs
 // Pega o ID da planilha do .env
 const SHEET_ID = process.env.SHEET_ID;
 
-// Autenticação com a conta de serviço
+const rawPrivateKey = process.env.GOOGLE_PRIVATE_KEY;
+
+if (!rawPrivateKey) {
+  throw new Error(
+    '❌ GOOGLE_PRIVATE_KEY não está definida nas variáveis de ambiente.',
+  );
+}
+
 const auth = new JWT({
   email: process.env.GOOGLE_SERVICE_EMAIL,
-  key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'), // Certificando-se que as quebras de linha são substituídas
+  key: rawPrivateKey.replace(/\\n/g, '\n'),
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 

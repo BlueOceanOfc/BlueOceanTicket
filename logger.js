@@ -1,32 +1,80 @@
 const winston = require('winston');
 const path = require('path');
+const { app } = require('electron');
+const fs = require('fs');
 const DailyRotateFile = require('winston-daily-rotate-file');
 
-// Configurando o formato do log
+// Variável para armazenar a janela do Electron que receberá os logs
+let sendToWindow = null;
+
+// Diretório onde os logs serão armazenados
+const logDir = path.join(app.getPath('userData'), 'logs');
+
+// Garante que o diretório existe
+if (!fs.existsSync(logDir)) {
+  fs.mkdirSync(logDir, { recursive: true });
+}
+
+// Formato do log
 const logFormat = winston.format.printf(({ level, message, timestamp }) => {
   return `${timestamp} [${level.toUpperCase()}]: ${message}`;
 });
 
-// Criando o logger
+// Criando o logger com Winston
 const logger = winston.createLogger({
-  level: 'info', // Define o nível mínimo de log que será salvo
+  level: 'info',
   format: winston.format.combine(
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     logFormat,
   ),
   transports: [
-    // Configuração de rotação de log para manter apenas 1000 logs
     new DailyRotateFile({
-      filename: path.join(__dirname, 'logs', 'app-%DATE%.log'), // Define o nome do arquivo de log com data
-      datePattern: 'YYYY-MM-DD', // Formato da data no nome do arquivo
-      maxFiles: '3d', // Mantém logs por 1 dia
-      maxSize: '15m', // Limita o tamanho do arquivo de log a 20MB
-      maxFiles: '7', // Mantém 7 arquivos de log (pode ajustar conforme necessidade)
+      filename: path.join(logDir, 'app-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      maxSize: '15m',
+      maxFiles: '7d',
     }),
-
-    // Exibe os logs no terminal
     new winston.transports.Console(),
   ],
 });
 
-module.exports = logger;
+// 👉 Função para definir a janela do Electron que receberá os logs
+function setSender(window) {
+  sendToWindow = window;
+}
+
+// 👉 Função genérica para enviar logs para o frontend
+function sendToRenderer(level, message) {
+  if (sendToWindow && sendToWindow.webContents) {
+    sendToWindow.webContents.send(
+      'update-terminal',
+      `[${level.toUpperCase()}] ${message}`,
+    );
+  } else {
+    console.log(`[${level.toUpperCase()}] ${message}`); // Se a janela não estiver disponível, loga no console
+  }
+}
+
+// 👉 Sobrescrevendo os métodos padrão do logger para também enviar ao frontend
+['info', 'warn', 'error', 'debug'].forEach((level) => {
+  const original = logger[level].bind(logger);
+  logger[level] = (...args) => {
+    const message = args
+      .map((arg) => (typeof arg === 'string' ? arg : JSON.stringify(arg)))
+      .join(' ');
+
+    original(message);
+    sendToRenderer(level, message);
+  };
+});
+
+// 👉 log() = atalho para logger.info()
+function log(...args) {
+  logger.info(...args);
+}
+
+module.exports = {
+  setSender,
+  log,
+  logger,
+};
