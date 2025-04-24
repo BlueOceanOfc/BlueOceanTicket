@@ -567,7 +567,7 @@ async function gerarRespostaFinal(
         respostaIA += `Your <strong>acceleration</strong> request has been forwarded to the responsible team. We will try to expedite your order <strong>ID ${orderData.orderId}</strong>.\n\n`;
       }
     } else if (tipoSolicitacao === 'Refil/Garantia') {
-      respostaIA += `Your <strong>refill</strong> or <strong>warranty</strong> request will be forwarded to our specialized technical team for analysis. We will contact you soon.\n\n`;
+      respostaIA += `I’ve forwarded your refill or warranty request to our specialized technical team for analysis. If your request is eligible, the refill or warranty will be processed within 0–48h after approval. \nIf you need anything else, don’t hesitate to contact us again\n\n`;
     } else {
       respostaIA += `Your request will be forwarded to our specialized technical team for analysis. We will contact you soon.\n\n`;
     }

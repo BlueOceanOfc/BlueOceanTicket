@@ -398,7 +398,7 @@ function iniciarAutomacao() {
     if (isProcessing) return; // Evita novas execuções enquanto uma já está em andamento
     isProcessing = true; // Marca que está processando
 
-    logger.info('🔍 Iniciando consulta a cada 20 segundos...');
+    logger.info('🔍 Iniciando consulta a cada 30 segundos...');
 
     try {
       await processarTodosTickets(); // Executa o processo
@@ -407,7 +407,7 @@ function iniciarAutomacao() {
     } finally {
       isProcessing = false; // Sempre reseta após a execução
     }
-  }, 20000); // Intervalo de 20 segundos
+  }, 30000); // Intervalo de 30 segundos
 }
 
 function pararAutomacao() {

@@ -1,0 +1,19 @@
+directories:
+  output: dist
+  buildResources: src/assets
+appId: com.seu.nome.automacao
+productName: Automacao Cancelamento
+files:
+  - filter:
+      - '**/*'
+extraFiles:
+  - from: .env
+    to: .env
+win:
+  icon: capa.ico
+  target: nsis
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+electronVersion: 35.1.5
