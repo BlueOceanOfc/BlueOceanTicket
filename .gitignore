@@ -7,3 +7,5 @@ node_modules
 # Ignorar logs gerados
 logs
 *.log
+
+dist/win-unpacked/Automacao Cancelamento.exe
