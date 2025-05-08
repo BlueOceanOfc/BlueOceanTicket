@@ -54,6 +54,7 @@ function extrairTodosOrderIds(mensagem) {
   return orderIdsUnicos;
 }
 
+// Ajuste no processamento dos Order IDs para agrupar por tipo de solicitação
 async function processarOrderIds(
   ticketId,
   tipoSolicitacao,
@@ -75,6 +76,14 @@ async function processarOrderIds(
   let mensagemRespostas = '';
   const orderIdsProcessados = new Set(); // Conjunto para verificar se o Order ID já foi processado
 
+  // Dicionário para agrupar os Order IDs por tipo de solicitação
+  const pedidosPorTipo = {
+    Aceleração: [],
+    Cancelamento: [],
+    'Refil/Garantia': [],
+    Diversos: [],
+  };
+
   // Processa cada Order ID
   for (const orderId of orderIds) {
     if (orderIdsProcessados.has(orderId)) {
@@ -90,22 +99,24 @@ async function processarOrderIds(
       continue;
     }
 
+    // Agrupar Order IDs por tipo de solicitação
     if (orderData.status === 'canceled') {
       pedidosNaoAptos.push({ orderId, motivo: 'Pedido já cancelado' });
     } else if (orderData.status === 'completed') {
       pedidosNaoAptos.push({ orderId, motivo: 'Pedido já completo' });
     } else {
-      pedidosAptos.push(orderId);
+      pedidosPorTipo[tipoSolicitacao].push(orderId); // Agrupa pelo tipo de solicitação
     }
   }
 
   // Gerando a resposta para o cliente
-  if (pedidosAptos.length > 0) {
-    mensagemRespostas += `The following Order IDs have been sent for speed-up: ${pedidosAptos.join(
-      ', ',
-    )}.\n\n`;
+  if (pedidosPorTipo[tipoSolicitacao].length > 0) {
+    mensagemRespostas += `The following Order IDs have been sent for ${tipoSolicitacao}: ${pedidosPorTipo[
+      tipoSolicitacao
+    ].join(', ')}.\n\n`;
   }
 
+  // Caso haja pedidos não aptos, incluir as razões
   if (pedidosNaoAptos.length > 0) {
     mensagemRespostas += `The following Order IDs were not processed:\n`;
     pedidosNaoAptos.forEach((pedido) => {
@@ -113,10 +124,8 @@ async function processarOrderIds(
     });
   }
 
-  // Verifique se a resposta já foi enviada
-  let respostaEnviada = false;
-
   // Enviar a resposta ao cliente
+  let respostaEnviada = false;
   if (!respostaEnviada) {
     console.log(`-----------ProcessarOdersID-----------`);
     console.log(
@@ -529,14 +538,10 @@ async function gerarRespostaFinal(
   }
 
   // Iniciando a resposta com uma saudação
-  const nomeUsuario = orderDataList[0]?.user; // Atribuindo o nome do usuário de `orderDataList`
+  // Iniciando a resposta com uma saudação
+  const nomeUsuario = orderDataList[0]?.user || ''; // Deixa em branco caso o nome não seja encontrado
 
-  if (!nomeUsuario) {
-    console.log('❌ Nome do usuário não encontrado.');
-    return 'Erro: Nome do usuário não encontrado.';
-  }
-
-  respostaIA += `Hello ${nomeUsuario},\n\n`; // Saudação personalizada com nome do usuário
+  respostaIA += `Hello ${nomeUsuario},\n\n`; // Saudação personalizada com nome do usuário (ou vazio)
 
   // Processando todos os pedidos
   for (const orderData of orderDataList) {
@@ -567,7 +572,7 @@ async function gerarRespostaFinal(
         respostaIA += `Your <strong>acceleration</strong> request has been forwarded to the responsible team. We will try to expedite your order <strong>ID ${orderData.orderId}</strong>.\n\n`;
       }
     } else if (tipoSolicitacao === 'Refil/Garantia') {
-      respostaIA += `I’ve forwarded your refill or warranty request to our specialized technical team for analysis. If your request is eligible, the refill or warranty will be processed within 0–48h after approval.\n To be eligible for a refill, the Order must be within the start and final count, and still under the Guaranteed/refill period.\n--\nIf you need anything else, don’t hesitate to contact us again.\n\n`;
+      respostaIA += `I have forwarded your Oder "<strong>ID ${orderData.orderId}</strong>" refill or warranty request to our dedicated technical team for review. If your request is eligible, the refill or warranty will be processed within 48 hours of approval. To be eligible for a refill, the Order must be within the starting and ending countdown and still within the Warranty/refill period. If you need anything else, please do not hesitate to contact us again.\n\n`;
     } else {
       respostaIA += `Your request will be forwarded to our specialized technical team for analysis. We will contact you soon.\n\n`;
     }

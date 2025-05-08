@@ -57,6 +57,7 @@ async function registrarNoGoogleSheets(orderData) {
       provider,
       mensagemDoCliente,
       lastMessage,
+      tipoSolicitacao,
     } = orderData;
 
     // Dados a serem registrados na planilha
@@ -74,7 +75,8 @@ async function registrarNoGoogleSheets(orderData) {
       createdAt,
       provider,
       mensagemDoCliente,
-      lastMessage, // Adiciona a última mensagem
+      lastMessage,
+      tipoSolicitacao, // Adiciona a última mensagem
     ];
 
     // Chama o serviço para registrar no Google Sheets
@@ -370,6 +372,7 @@ async function processarTicket(ticketId, lastExecution) {
           provider: orderData.provider,
           mensagemDoCliente: primeiraMensagemDoCliente,
           lastMessage: respostaFinal,
+          tipoSolicitacao,
         });
 
         logger.info(
@@ -392,6 +395,7 @@ let automationInterval; // Declare o intervalo globalmente
 // Função para iniciar a automação
 function iniciarAutomacao() {
   logger.info(chalk.blue.bold('✅ Iniciando a automação...'));
+  let lastExecutionTime = Date.now(); // já está lá, só mover para o topo do arquivo
 
   // Definindo o intervalo de 20 segundos (20000 milissegundos)
   automationInterval = setInterval(async () => {
@@ -401,6 +405,8 @@ function iniciarAutomacao() {
     logger.info('🔍 Iniciando consulta a cada 30 segundos...');
 
     try {
+      lastExecutionTime = Date.now();
+
       await processarTodosTickets(); // Executa o processo
     } catch (erro) {
       logger.error(`Erro ao processar os tickets: ${erro.message}`);
@@ -486,16 +492,16 @@ let lastExecutionTime = Date.now(); // Inicia com o timestamp atual
 
 setInterval(() => {
   try {
-    if (isProcessing && Date.now() - lastExecutionTime > 10000) {
-      // 10 segundos travado
+    if (isProcessing && Date.now() - lastExecutionTime > 60000) {
       logger.error('⚠️ Automação travada. Reiniciando o processo...');
-      isProcessing = false; // Reseta o processamento travado
-      iniciarAutomacao(); // Reinicia a automação
+      isProcessing = false;
+      pararAutomacao(); // <-- ADICIONA ISSO
+      iniciarAutomacao(); // reinicia limpo
     }
   } catch (erro) {
     logger.error(`Erro no intervalo de execução: ${erro.message}`);
   }
-}, 20000); // Verifica a cada 20 segundos
+}, 30000); // Verifica a cada 20 segundos
 
 // Função para reiniciar a automação em caso de falha crítica
 async function retryExecution() {

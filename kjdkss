@@ -1,0 +1,41 @@
+[33mcommit cec7eb8ee98b6642b9f3d467de15e214aa0fea07[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: Marcelo <marcelofernandesdev19@gmail.com>
+Date:   Thu Apr 24 12:42:59 2025 -0300
+
+    Salvando mudanças no .gitignore e nos arquivos grandes
+
+[33mcommit 3c52d2c2852bcb1d8d6d45b8ee8c0aea99eec3b8[m
+Author: Marcelo <marcelofernandesdev19@gmail.com>
+Date:   Thu Apr 24 12:27:45 2025 -0300
+
+    Adicionando arquivos grandes (.exe e .asar) ao Git LFS
+
+[33mcommit 48c1e2ecca3624d392523a42baccd1141e696de9[m
+Author: Marcelo <marcelofernandesdev19@gmail.com>
+Date:   Thu Apr 24 12:21:06 2025 -0300
+
+    Atualizações no index.js, iaSolicitacao.js e last_execution.json
+
+[33mcommit 257d14f753be57a7bf531bc855865ca4ec4ef717[m
+Author: Marcelo <marcelofernandesdev19@gmail.com>
+Date:   Thu Apr 24 12:10:10 2025 -0300
+
+    Atualizações no index.js, iaSolicitacao.js e last_execution.json
+
+[33mcommit 89550b4c3ada9512a51e36725c113e7aa7681219[m
+Author: Marcelo <marcelofernandesdev19@gmail.com>
+Date:   Thu Apr 17 10:14:34 2025 -0300
+
+    Atualização 2.0
+
+[33mcommit 7392e5704cb60a82dd34ad3f5ee8ab6141f4a363[m
+Author: Marcelo <marcelofernandesdev19@gmail.com>
+Date:   Wed Apr 9 18:17:37 2025 -0300
+
+    Automacao-Ticket_Beta_1.0
+
+[33mcommit e7edd29028d4e4f9202d5bc23656c660874a462f[m
+Author: Marcelo <marcelofernandesdev19@gmail.com>
+Date:   Fri Mar 28 19:12:58 2025 -0300
+
+    primeiro commit
