@@ -195,7 +195,7 @@ async function classificarCategoriaGeral(mensagemOriginal) {
        - A IA deve identificar que, mesmo sem o **Order ID**, a mensagem é sobre um pedido. 
        - **Se a mensagem contiver "Speed" ou "SpeedUp"**, isso deve ser automaticamente classificado como "Pedido", **mesmo sem o número do pedido presente**. Exemplo: "Speed", "SpeedUp", "Please speed up my order", "I need to speed my request", "18575speed", entre outros.
 
-    2. "Pagamento" – se a mensagem for sobre questões financeiras, como valor, fatura, cobrança, saldo, cartão, comprovante de pagamento, falha no pagamento, etc.
+    2. "Pagamento" – se a mensagem for sobre questões financeiras, como valor, desconto, fatura, cobrança, saldo, cartão, comprovante de pagamento, falha no pagamento, ou qualquer outro termo relacionado ao pagamento ou à transação financeira etc.
     3. "Outro" – se não for relacionado a pedidos ou pagamentos. Exemplos: perda de senha, suporte técnico, dúvidas gerais, reclamações, acesso à conta, etc.
 
     ⚠️ IMPORTANTE:
@@ -517,80 +517,122 @@ async function verificarTipoDeSolicitacao(messages) {
 async function gerarRespostaFinal(
   ticketId,
   tipoSolicitacao,
-  orderIds, // Agora, a variável orderIds será sempre um array
-  orderDataList, // Agora, isso será uma lista de objetos contendo os dados de cada pedido
+  orderIds,
+  orderDataList,
   idiomaDetectado,
-  nomeAtendente = 'Marcelle', // Nome do atendente
+  nomeAtendente = 'Marcelle',
   linkRevendedor = 'https://smmexcellent.com/child-panel',
   linkAfiliado = 'https://smmexcellent.com/affiliates',
 ) {
   console.log('---------- GERAR RESPOSTA FINAL ------------');
 
-  let respostaIA = '';
-  let pedidosAptos = [];
-  let pedidosNaoAptos = [];
-
-  // Remover Order IDs duplicados
-  const orderIdsUnicos = [...new Set(orderIds)]; // Agora a variável `orderIdsUnicos` é usada aqui
-
-  if (!Array.isArray(orderDataList)) {
-    orderDataList = [orderDataList]; // Caso apenas um pedido tenha sido passado
+  function formatIds(ids) {
+    return Array.isArray(ids) ? ids.join(', ') : String(ids);
   }
 
-  // Iniciando a resposta com uma saudação
-  // Iniciando a resposta com uma saudação
-  const nomeUsuario = orderDataList[0]?.user || ''; // Deixa em branco caso o nome não seja encontrado
+  let respostaIA = '';
+  const orderIdsUnicos = [...new Set(orderIds)];
 
-  respostaIA += `Hello ${nomeUsuario},\n\n`; // Saudação personalizada com nome do usuário (ou vazio)
+  if (!Array.isArray(orderDataList)) {
+    orderDataList = [orderDataList];
+  }
 
-  // Processando todos os pedidos
+  const nomeUsuario = orderDataList[0]?.user || '';
+  respostaIA += `Hello ${nomeUsuario},\n\n`;
+
+  const pedidosAgrupados = {
+    completed: [],
+    canceled: [],
+    pendente: [],
+    invalidos: [],
+  };
+
   for (const orderData of orderDataList) {
     if (!orderData || !orderData.status) {
-      console.log(`❌ Dados inválidos para o pedido ${orderData.orderId}.`);
-      pedidosNaoAptos.push({
-        orderId: orderData.orderId,
-        motivo: 'Dados incompletos',
-      });
+      pedidosAgrupados.invalidos.push(orderData?.orderId || '(unknown)');
       continue;
     }
 
-    // Gerar a resposta para cada pedido com mais detalhes
-    if (tipoSolicitacao === 'Cancelamento') {
-      if (orderData.status === 'canceled') {
-        respostaIA += `Your order <strong>ID ${orderData.orderId}</strong> has already been <strong>canceled</strong>, as requested. You can place a new order at any time.\n\n`;
-      } else if (orderData.status === 'completed') {
-        respostaIA += `Your order <strong>ID ${orderData.orderId}</strong> is already <strong>complete</strong>. We cannot cancel an order that has already been completed.\n\n`;
-      } else {
-        respostaIA += `The <strong>cancellation</strong> request for your order <strong>ID ${orderData.orderId}</strong> has been forwarded to the responsible team. Your order will be canceled soon.\n\n`;
-      }
-    } else if (tipoSolicitacao === 'Aceleração') {
-      if (orderData.status === 'completed') {
-        respostaIA += `Your order <strong>ID ${orderData.orderId}</strong> is already <strong>complete</strong>. We cannot expedite an order that has already been completed.\n\n`;
-      } else if (orderData.status === 'canceled') {
-        respostaIA += `Your order <strong>ID ${orderData.orderId}</strong> has been <strong>canceled</strong>. We cannot expedite an order that has been canceled.\n\n`;
-      } else {
-        respostaIA += `Your <strong>acceleration</strong> request has been forwarded to the responsible team. We will try to expedite your order <strong>ID ${orderData.orderId}</strong>.\n\n`;
-      }
-    } else if (tipoSolicitacao === 'Refil/Garantia') {
-      respostaIA += `I have forwarded your Oder "<strong>ID ${orderData.orderId}</strong>" refill or warranty request to our dedicated technical team for review. If your request is eligible, the refill or warranty will be processed within 48 hours of approval. To be eligible for a refill, the Order must be within the starting and ending countdown and still within the Warranty/refill period. If you need anything else, please do not hesitate to contact us again.\n\n`;
+    const status = orderData.status.toLowerCase();
+    if (status === 'completed') {
+      pedidosAgrupados.completed.push(orderData.orderId);
+    } else if (status === 'canceled') {
+      pedidosAgrupados.canceled.push(orderData.orderId);
     } else {
-      respostaIA += `Your request will be forwarded to our specialized technical team for analysis. We will contact you soon.\n\n`;
+      pedidosAgrupados.pendente.push(orderData.orderId);
     }
   }
 
-  // **Conclusion and links**
+  if (tipoSolicitacao === 'Cancelamento') {
+    if (pedidosAgrupados.completed.length > 0) {
+      respostaIA += `Your order(s) <strong>ID ${formatIds(
+        pedidosAgrupados.completed,
+      )}</strong> ${
+        pedidosAgrupados.completed.length === 1 ? 'is' : 'are'
+      } already <strong>complete</strong>. We cannot cancel order(s) that have already been completed.\n\n`;
+    }
+
+    if (pedidosAgrupados.canceled.length > 0) {
+      respostaIA += `Your order(s) <strong>ID ${formatIds(
+        pedidosAgrupados.canceled,
+      )}</strong> ${
+        pedidosAgrupados.canceled.length === 1 ? 'has' : 'have'
+      } already been <strong>canceled</strong>, as requested. You can place a new order at any time.\n\n`;
+    }
+
+    if (pedidosAgrupados.pendente.length > 0) {
+      respostaIA += `The <strong>cancellation</strong> request for your order(s) <strong>ID ${formatIds(
+        pedidosAgrupados.pendente,
+      )}</strong> has been forwarded to the responsible team. Your order(s) will be canceled soon.\n\n`;
+    }
+  } else if (tipoSolicitacao === 'Aceleração') {
+    if (pedidosAgrupados.completed.length > 0) {
+      respostaIA += `Your order(s) <strong>ID ${formatIds(
+        pedidosAgrupados.completed,
+      )}</strong> ${
+        pedidosAgrupados.completed.length === 1 ? 'is' : 'are'
+      } already <strong>complete</strong>. We cannot expedite order(s) that have already been completed.\n\n`;
+    }
+
+    if (pedidosAgrupados.canceled.length > 0) {
+      respostaIA += `Your order(s) <strong>ID ${formatIds(
+        pedidosAgrupados.canceled,
+      )}</strong> ${
+        pedidosAgrupados.canceled.length === 1 ? 'has' : 'have'
+      } been <strong>canceled</strong>. We cannot expedite canceled order(s).\n\n`;
+    }
+
+    if (pedidosAgrupados.pendente.length > 0) {
+      respostaIA += `Your <strong>acceleration</strong> request has been forwarded. We will try to expedite the order(s) <strong>ID ${formatIds(
+        pedidosAgrupados.pendente,
+      )}</strong> as soon as possible.\n\n`;
+    }
+  } else if (tipoSolicitacao === 'Refil/Garantia') {
+    respostaIA += `I have forwarded your refill/warranty request for order(s) <strong>ID ${formatIds(
+      orderIdsUnicos,
+    )}</strong> to our technical team.\n\nTo be eligible for a refill, the current count must be above the start count and below the end count, and the order must be within the warranty/refill period described in the service.\n\nIf approved, the process will be completed within 48 hours.\n\nIf you need anything else, feel free to contact us again.\n\n`;
+  } else {
+    respostaIA += `Your request has been forwarded to our specialized technical team for analysis. We will contact you soon regarding order(s) <strong>ID ${formatIds(
+      orderIdsUnicos,
+    )}</strong>.\n\n`;
+  }
+
+  if (pedidosAgrupados.invalidos.length > 0) {
+    respostaIA += `Some order(s) could not be processed due to missing or invalid information: <strong>ID ${formatIds(
+      pedidosAgrupados.invalidos,
+    )}</strong>.\n\n`;
+  }
+
   respostaIA += `---\nIf you need more information, we are available to help.\n\nBest regards,\n\n${nomeAtendente}\n\n`;
   respostaIA += `➕ Join us as a reseller for just $25 - [Reseller Link](${linkRevendedor})\n`;
   respostaIA += `➕ Invite friends, share your link, and earn! - [Affiliate Link](${linkAfiliado})\n`;
 
-  // **A tradução só acontece se o idioma detectado não for inglês**
   let respostaTraduzida = respostaIA;
   if (idiomaDetectado !== 'en') {
     console.log(`🌍 Traduzindo a resposta para o idioma: ${idiomaDetectado}`);
-    respostaTraduzida = await traduzirTexto(respostaIA, idiomaDetectado); // Traduz apenas se não for inglês
+    respostaTraduzida = await traduzirTexto(respostaIA, idiomaDetectado);
   }
 
-  // Retornamos a resposta gerada, sem enviar diretamente
   return respostaTraduzida;
 }
 

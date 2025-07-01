@@ -1,34 +1,39 @@
 const axios = require('axios');
 
-// URL da API
-const apiUrl = 'https://smmexcellent.com/adminapi/v2/orders/';
+// Definir a URL da API e a chave
+const API_KEY =
+  'qp8r55uij9k07ya2st1mf0d90h70t00f0yaytrg7zqq80oin53eznuh44q7x01h1';
+const BASE_URL = 'https://smmexcellent.com/adminapi/v2/orders'; // URL base de Orders
 
-// Substitua com o ID do pedido que você deseja consultar
-const orderId = 550039; // Exemplo, substitua pelo ID real
-const apiKey =
-  'qp8r55uij9k07ya2st1mf0d90h70t00f0yaytrg7zqq80oin53eznuh44q7x01h1'; // Substitua pela sua chave de API
-
-// Configuração dos cabeçalhos
-const headers = {
-  'Content-Type': 'application/json',
-  'X-Api-Key': apiKey,
-};
-
-// Função para fazer a requisição GET e obter as informações do pedido
-async function getOrderDetails() {
+// Função para pegar a lista de tickets
+async function getTickets() {
   try {
-    const response = await axios.get(`${apiUrl}${orderId}`, { headers });
+    const response = await axios.get(BASE_URL, {
+      headers: {
+        'X-Api-Key': API_KEY, // Envia a chave da API no cabeçalho
+      },
+      params: {
+        limit: 1, // Limite de 1 ticket para teste, pode ajustar conforme necessário
+        offset: 0, // Offset inicial para a paginação
+      },
+    });
 
-    // Exibindo a resposta da API
-    console.log('Detalhes do Pedido:', response.data);
+    // Exibe os dados retornados no console
+    console.log('Resposta da API:', response.data);
+
+    if (response.data && response.data.data.list.length > 0) {
+      const ticket = response.data.data.list[0];
+      console.log(`Ticket ID: ${ticket.id}`);
+      console.log(`Status: ${ticket.status}`);
+      console.log(`Link: ${ticket.link}`);
+      console.log(`Criado em: ${ticket.created}`);
+    } else {
+      console.log('Nenhum ticket encontrado.');
+    }
   } catch (error) {
-    // Em caso de erro
-    console.error(
-      'Erro ao obter os detalhes do pedido:',
-      error.response ? error.response.data : error.message,
-    );
+    console.error('Erro ao fazer a requisição:', error.message);
   }
 }
 
-// Chama a função para obter os detalhes do pedido
-getOrderDetails();
+// Chama a função para obter os tickets
+getTickets();

@@ -2,8 +2,8 @@
   "name": "automacao-cancelamento",
   "version": "1.0.0",
   "main": "main.js",
-  "description": "",
-  "author": "",
+  "description": "Aplicação de Automação para Cancelamento",
+  "author": "Seu Nome",
   "license": "ISC",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -11,10 +11,14 @@
     "electron": "electron .",
     "build": "electron-builder"
   },
-  "keywords": [],
+  "keywords": [
+    "automação",
+    "cancelamento",
+    "electron"
+  ],
   "dependencies": {
     "@google-cloud/translate": "^9.0.1",
-    "axios": "^1.8.2",
+    "axios": "^1.9.0",
     "chalk": "^4.1.2",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
@@ -54,6 +58,14 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "icon": "capa.icns",
+      "target": "dmg"
+    },
+    "linux": {
+      "icon": "capa.png",
+      "target": "AppImage"
     }
   }
 }
