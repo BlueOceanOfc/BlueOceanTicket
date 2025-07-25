@@ -610,7 +610,7 @@ async function gerarRespostaFinal(
   } else if (tipoSolicitacao === 'Refil/Garantia') {
     respostaIA += `I have forwarded your refill/warranty request for order(s) <strong>ID ${formatIds(
       orderIdsUnicos,
-    )}</strong> to our technical team.\n\nTo be eligible for a refill, the current count must be above the start count and below the end count, and the order must be within the warranty/refill period described in the service.\n\nIf approved, the process will be completed within 48 hours.\n\nIf you need anything else, feel free to contact us again.\n\n`;
+    )}</strong> to our technical team.\n\nTo be eligible for a refill, the current count must be above the start count and below the end count, and the order must be within the warranty/refill period described in the service.\n\nIf approved, the process will be completed within 1 to 3 days.\n\nIf you need anything else, feel free to contact us again.\n\n`;
   } else {
     respostaIA += `Your request has been forwarded to our specialized technical team for analysis. We will contact you soon regarding order(s) <strong>ID ${formatIds(
       orderIdsUnicos,
