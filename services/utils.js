@@ -37,7 +37,7 @@ function splitByHr(raw) {
     return { before, after };
   }
   // 2. Fallback para divisores de texto (---)
-  const dashSplit = raw.split(/\n-{3,}\n/);
+  const dashSplit = raw.split(/\n-{2,}\n/);
   if (dashSplit.length > 1)
     return {
       before: dashSplit.slice(0, -1).join('\n---\n'),
@@ -139,7 +139,7 @@ export function parseRawMessage(raw) {
   const body = stripHtml(bodyRaw);
 
   // Adiciona o Order ID se a mensagem for *apenas* um número com ao menos 3 dígitos
-  const onlyDigits = body.match(/^\d{3,}$/);
+  const onlyDigits = body.match(/^\d{2,}$/);
   const interpretedOrderIds = [...idsWithConf];
   if (onlyDigits) {
     if (!interpretedOrderIds.find((x) => x.id === onlyDigits[0]))
@@ -172,7 +172,7 @@ function extractOrderIdsWithConfidence(raw) {
   );
   if (htmlLabeled && htmlLabeled[1]) {
     // Consider only numeric runs with at least 3 digits
-    const found = htmlLabeled[1].match(/\d{3,12}/g) || [];
+    const found = htmlLabeled[1].match(/\d{2,12}/g) || [];
     for (const f of found) {
       ids.push({ id: f.trim(), confidence: 'high' });
     }
@@ -183,7 +183,7 @@ function extractOrderIdsWithConfidence(raw) {
   // Captura até quebra de linha ou pontuação e extrai todos os números presentes
   const plainLabeled = raw.match(/Order\s*ID[:\s]*([^\n\r<]*)/i);
   if (plainLabeled && plainLabeled[1]) {
-    const foundPlain = plainLabeled[1].match(/\d{3,12}/g) || [];
+    const foundPlain = plainLabeled[1].match(/\d{2,12}/g) || [];
     for (const f of foundPlain) {
       ids.push({ id: f.trim(), confidence: 'high' });
     }
@@ -192,7 +192,7 @@ function extractOrderIdsWithConfidence(raw) {
   // 3. Média/Baixa Confiança: Todos os outros números que parecem IDs (dígitos)
   // Usa Set para garantir unicidade
   // Only numeric runs of minimum 3 digits
-  const digitMatches = [...new Set(raw.match(/\d{3,12}/g) || [])];
+  const digitMatches = [...new Set(raw.match(/\d{2,12}/g) || [])];
   // If the message contains multiple numeric tokens (like "1,2,3,4" or "1 2 3 4"),
   // it's likely the client sent multiple order IDs. In that case, promote all
   // digit runs to 'medium' confidence even if each is short.

@@ -1211,6 +1211,8 @@ async function processarTicket(ticketId, lastExecution) {
             }
 
             // Aggregate successes/skips
+
+            // Normalize and dedupe raw ID lists
             const successIds = Array.from(
               new Set(successIdsRaw.map(String)),
             ).filter(Boolean);
@@ -1218,12 +1220,21 @@ async function processarTicket(ticketId, lastExecution) {
               new Set(skippedIdsRaw.map(String)),
             ).filter(Boolean);
 
+            // If an ID appears in both success and skipped, prefer 'skipped' because
+            // the API signalled that the cancel action did not actually take effect
+            // (for example: no button available / not eligible). This avoids marking
+            // it as `cancel_sent` when it wasn't really performed.
+            const skippedSet = new Set(skippedIds);
+            const successIdsFinal = Array.from(
+              new Set(successIds.filter((id) => !skippedSet.has(id))),
+            );
+
             // Distinguish which successes came from admin cancel vs regular cancel
             const successAdminSet = new Set(
-              successIds.filter((id) => uniqueAdmin.includes(String(id))),
+              successIdsFinal.filter((id) => uniqueAdmin.includes(String(id))),
             );
             const successNormalSet = new Set(
-              successIds.filter((id) => uniqueNormal.includes(String(id))),
+              successIdsFinal.filter((id) => uniqueNormal.includes(String(id))),
             );
 
             // Truncate and combine raw responses for storage
@@ -1240,12 +1251,12 @@ async function processarTicket(ticketId, lastExecution) {
 
             logger.info(
               `✅ Resultado do pedido de cancelamento - sucesso: ${
-                successIds.join(', ') || 'nenhum'
+                successIdsFinal.join(', ') || 'nenhum'
               }; pulados: ${skippedIds.join(', ') || 'nenhum'}`,
             );
 
             // Prepare action summary for Sheets
-            const sentIdsStr = successIds.join(',') || '';
+            const sentIdsStr = successIdsFinal.join(',') || '';
             const skippedIdsStr = skippedIds.join(',') || '';
             acaoRealizadaForSheet = sentIdsStr
               ? `cancel_sent: sent=${sentIdsStr}${
@@ -1475,8 +1486,8 @@ async function processarTodosTickets() {
 let isProcessing = false;
 let automationInterval;
 let lastExecutionTime; // Variável para o watchdog
-const INTERVALO_AUTOMACAO = 60000;
-const INTERVALO_WATCHDOG = 60000;
+const INTERVALO_AUTOMACAO = 5000;
+const INTERVALO_WATCHDOG = 5000;
 
 function iniciarAutomacao() {
   logger.info(chalk.green.bold('✅ Iniciando a automação...'));
